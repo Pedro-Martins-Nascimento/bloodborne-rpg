@@ -20,9 +20,7 @@ Um aplicativo web moderno e responsivo construído para auxiliar mestres e jogad
 
 ## 🌐 Demo ao Vivo
 
-**[Acesse o aplicativo aqui](https://SEU-PROJETO.vercel.app)** *(Vercel)*
-
-> Após o deploy no Vercel, atualize este link com a URL real.
+**[Acesse o aplicativo aqui](https://bloodborne-rpg.vercel.app/#/)** *(Vercel)*
 
 ---
 
