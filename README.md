@@ -20,9 +20,9 @@ Um aplicativo web moderno e responsivo construído para auxiliar mestres e jogad
 
 ## 🌐 Demo ao Vivo
 
-**[Acesse o aplicativo aqui](https://pedro-martins-nascimento.github.io/bloodborne-rpg/)** *(GitHub Pages)*
+**[Acesse o aplicativo aqui](https://SEU-PROJETO.vercel.app)** *(Vercel)*
 
-> Configure GitHub Pages no repositório: Settings → Pages → Source: main branch
+> Após o deploy no Vercel, atualize este link com a URL real.
 
 ---
 
