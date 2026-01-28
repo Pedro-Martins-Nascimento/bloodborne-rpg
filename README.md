@@ -1,6 +1,8 @@
 # 🩸 Bloodborne: Tabletop Companion
 
-<img src="./src/assets/yharnam-hero.png" alt="Bloodborne" width="800" height="600" style="border-radius: 8px;">
+<div align="center">
+  <img src="./src/assets/yharnam-hero.png" alt="Bloodborne - A Hunter stands before Yharnam" style="max-width: 100%; height: auto; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);">
+</div>
 
 > **Um aplicativo web realtime para mestres e jogadores de RPG de mesa temático de Bloodborne**
 
@@ -18,9 +20,9 @@ Um aplicativo web moderno e responsivo construído para auxiliar mestres e jogad
 
 ## 🌐 Demo ao Vivo
 
-**[Acesse o aplicativo aqui](https://seu-usuario.github.io/bloodborne-rpg/)** *(GitHub Pages)*
+**[Acesse o aplicativo aqui](https://pedro-martins-nascimento.github.io/bloodborne-rpg/)** *(GitHub Pages)*
 
-> Ainda não tem link? Configure GitHub Pages e atualize este link!
+> Configure GitHub Pages no repositório: Settings → Pages → Source: main branch
 
 ---
 
