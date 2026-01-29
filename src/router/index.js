@@ -2,11 +2,17 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import Login from '../views/Login.vue'
 import PlayerSheet from '../views/PlayerSheet.vue'
 import MasterDashboard from '../views/MasterDashboard.vue'
+import SessionSetup from '../views/SessionSetup.vue'
+import SessionLobby from '../views/SessionLobby.vue'
+import ApprovedLobby from '../views/ApprovedLobby.vue'
 
 const routes = [
   { path: '/', component: Login },
   { path: '/player/:id', component: PlayerSheet, props: true },
-  { path: '/mestre', component: MasterDashboard }
+  { path: '/mestre/:sessionId?', component: MasterDashboard, props: true },
+  { path: '/sessao', component: SessionSetup },
+  { path: '/sessao-lobby/:id/:playerId', component: SessionLobby, props: true },
+  { path: '/sessao-approved/:id/:playerId', component: ApprovedLobby, props: true }
 ]
 
 const router = createRouter({

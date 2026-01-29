@@ -41,7 +41,71 @@ export const createCharacter = (charId, initialData) => {
     return set(ref(db, `personagens/${charId}`), initialData);
 };
 
-// --- FUNÇÕES DE COMBATE ---
+// --- FUNÇÕES DE SESSÃO ---
+
+// Gerar ID único de 6 caracteres (ABC123)
+export const generateSessionId = () => {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+};
+
+// Criar nova sessão
+export const createSession = (masterId, sessionData) => {
+    const sessionId = generateSessionId();
+    const sessionRef = ref(db, `sessoes/${sessionId}`);
+    const fullData = {
+        id: sessionId,
+        mestrado: masterId,
+        criada_em: new Date().toISOString(),
+        ativa: true,
+        personagens: {},
+        combate: { ativo: false, ordem: [], turnoAtual: 0 },
+        ...sessionData
+    };
+    return set(sessionRef, fullData).then(() => sessionId);
+};
+
+// Obter dados da sessão
+export const getSession = (sessionId, callback) => {
+    const sessionRef = ref(db, `sessoes/${sessionId}`);
+    return onValue(sessionRef, (snapshot) => {
+        callback(snapshot.val());
+    }, (error) => {
+        callback(null); // Sessão não encontrada
+    });
+};
+
+// Escutar personagens da sessão
+export const subscribeToSessionCharacters = (sessionId, callback) => {
+    const charsRef = ref(db, `sessoes/${sessionId}/personagens`);
+    return onValue(charsRef, (snapshot) => {
+        callback(snapshot.val() || {});
+    });
+};
+
+// Atualizar personagem na sessão
+export const updateSessionCharacter = (sessionId, charId, data) => {
+    return update(ref(db, `sessoes/${sessionId}/personagens/${charId}`), data);
+};
+
+// Criar personagem na sessão
+export const createSessionCharacter = (sessionId, charId, initialData) => {
+    return set(ref(db, `sessoes/${sessionId}/personagens/${charId}`), initialData);
+};
+
+// Escutar combate da sessão
+export const subscribeToSessionCombat = (sessionId, callback) => {
+    const combatRef = ref(db, `sessoes/${sessionId}/combate`);
+    return onValue(combatRef, (snapshot) => {
+        callback(snapshot.val() || { ativo: false, ordem: [], turnoAtual: 0 });
+    });
+};
+
+// Atualizar estado do combate da sessão
+export const setSessionCombatState = (sessionId, newState) => {
+    return set(ref(db, `sessoes/${sessionId}/combate`), newState);
+};
+
+// --- FUNÇÕES ANTIGAS (Para compatibilidade) ---
 const combatRef = ref(db, 'combate');
 
 // Escutar o estado do combate (para todos)
