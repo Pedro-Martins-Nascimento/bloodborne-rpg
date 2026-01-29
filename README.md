@@ -9,12 +9,14 @@
 Um aplicativo web moderno e responsivo construído para auxiliar mestres e jogadores em campanhas de RPG de mesa temáticas de Bloodborne. O objetivo é substituir fichas de papel por uma interface digital interativa e imersiva.
 
 **Características principais:**
-- 📱 Interface otimizada para celulares (jogadores)
-- 🎮 Painel completo para mestres (web/desktop)
-- ⚡ Sincronização em tempo real de todos os dados
-- 🎭 Design temático gótico inspirado em Yharnam
+- 📱 Interface totalmente responsiva (celulares, tablets, desktops)
+- 🎮 Painel completo para mestres (gerenciamento de sessões e personagens)
+- ⚡ Sincronização em tempo real com Firebase Realtime Database
+- 🎭 Design temático gótico com estética Soulslike inspirada em Yharnam
+- 🔄 Sistema de sessões com IDs únicos para múltiplos grupos
+- 🎲 Suporte para múltiplos jogadores por sessão
 
-**Stack tecnológico:** Vite + Vue 3 + Tailwind CSS + Firebase Realtime Database
+**Stack tecnológico:** Vite + Vue 3 + Tailwind CSS + Firebase Realtime Database + Composition API
 
 ---
 
@@ -26,23 +28,36 @@ Um aplicativo web moderno e responsivo construído para auxiliar mestres e jogad
 
 ## ✨ Funcionalidades
 
+### Sistema de Sessões 🔐
+- **Criação de Sessão pelo Mestre:** Gera um ID único de 6 caracteres
+- **Entrada de Jogadores:** Jogadores entram com ID da sessão + nome do personagem
+- **Sincronização em Tempo Real:** Todos os dados são sincronizados instantaneamente via Firebase
+- **Auto-Redirect:** Jogadores são redirecionados automaticamente quando a ficha é atribuída
+- **Gerenciamento de Personagens:** Mestre pode atribuir fichas e remover jogadores
+
 ### Jogador 👤
-- **Ficha de Personagem Dinâmica:** Visualize e acompanhe Vida, Frascos de Sangue, Balas de Prata e Status em tempo real
-- **Sincronização Instantânea:** Qualquer mudança do mestre aparece imediatamente na ficha
-- **Interface Minimalista:** Design limpo e responsivo focado em facilitar a leitura durante a sessão
+- **Ficha de Personagem Responsiva:** Visualize e acompanhe Vida, Frascos de Sangue, Balas de Prata e Status
+- **Design Mobile-First:** Interface otimizada para celulares com breakpoints para tablet e desktop
+- **Sincronização Instantânea:** Qualquer mudança do mestre aparece em tempo real na ficha
+- **Smooth Scrolling:** Navegação suave entre seções da ficha
+- **Indicadores Visuais:** Barras de status animadas e efeitos especiais destacados
+- **Atributos Adaptáveis:** Labels abreviados em dispositivos móveis para melhor legibilidade
 
 ### Mestre 🎭
-- **Painel de Controle Completo:** Gerencie a vida, aplicar efeitos especiais e controlar a sessão
-- **Templates de Ficha:** Atribua arquétipos pré-definidos (Caçador do Machado, Cutelo, etc.) com um clique
-- **Tracker de Iniciativa Sincronizado:** Sistema de combate completo onde você define a ordem e controla os turnos
-- **Lobby de Sessão:** Jogadores entram com seus nomes e aguardam atribuição de fichas
+- **Painel de Controle Completo:** Gerencie vida, aplicar efeitos especiais e controlar sessões
+- **Templates de Ficha:** Atribua arquétipos pré-definidos com um clique
+- **Tracker de Iniciativa Sincronizado:** Sistema de combate integrado com ordem de turnos
+- **Lobby de Sessão:** Gerenciar entrada de jogadores e atribuição de personagens
 - **Efeitos Especiais:** Aplique status como Frenesi, Veneno e outros em tempo real
-- **Notificações em Tempo Real:** Todos os jogadores são notificados instantaneamente sobre mudanças
+- **Dashboard Intuitivo:** Interface organizada com múltiplos painéis para controle total
 
-### Geral 🎮
-- **Interface Imersiva:** Design e fontes inspirados na estética gótica de Yharnam
-- **Totalmente Responsivo:** Funciona perfeitamente em celulares, tablets e desktops
-- **Segurança:** Credenciais do Firebase gerenciadas de forma segura com variáveis de ambiente
+### Design & Estética 🎨
+- **Soulslike Visual:** Fontes Cinzel (títulos), Playfair Display (descrições), Material Symbols (ícones)
+- **Glassmorphism:** Painéis com efeito de vidro e bordas ornamentadas
+- **Responsividade Completa:** 5 níveis de breakpoints (xs, sm, md, lg, xl)
+- **Smooth Animations:** Transições suaves e comportamento de scroll otimizado
+- **Dark Theme:** Design escuro imersivo inspirado em Yharnam
+- **Acessibilidade:** Contraste adequado e tamanhos de fonte adaptativos
 
 ---
 
@@ -128,27 +143,30 @@ npm run preview  # Previsualiza build de produção localmente
 ```
 bloodborne-rpg/
 ├── src/
-│   ├── components/          # Componentes Vue reutilizáveis
-│   │   └── InitiativeTracker.vue
-│   ├── views/               # Páginas principais
-│   │   ├── Login.vue
-│   │   ├── MasterDashboard.vue
-│   │   └── PlayerSheet.vue
-│   ├── router/              # Configuração de rotas
-│   ├── services/            # Integração com Firebase
-│   │   └── firebase.js
-│   ├── assets/              # Imagens, ícones, etc
-│   ├── App.vue              # Componente raiz
-│   ├── main.js              # Arquivo de entrada
-│   └── style.css            # Estilos globais
-├── index.html               # HTML principal
-├── .env.example             # Variáveis de ambiente (template)
-├── .gitignore               # Arquivos ignorados pelo Git
-├── tailwind.config.js       # Configuração Tailwind CSS
-├── vite.config.js           # Configuração Vite
-├── postcss.config.js        # Configuração PostCSS
-├── package.json             # Dependências e scripts
-└── README.md                # Este arquivo
+│   ├── components/               # Componentes Vue reutilizáveis
+│   │   └── InitiativeTracker.vue # Tracker de iniciativa integrado
+│   ├── views/                    # Páginas principais
+│   │   ├── Login.vue             # Seleção Mestre/Jogador
+│   │   ├── SessionSetup.vue      # Criação de sessão (Mestre)
+│   │   ├── SessionLobby.vue      # Lobby de sessão
+│   │   ├── ApprovedLobby.vue     # Sala de espera (Jogador)
+│   │   ├── MasterDashboard.vue   # Dashboard do Mestre
+│   │   └── PlayerSheet.vue       # Ficha responsiva do Jogador
+│   ├── router/                   # Configuração de rotas (Vue Router)
+│   ├── services/                 # Integração com Firebase
+│   │   └── firebase.js           # Funções realtime + CRUD
+│   ├── assets/                   # Imagens, ícones, etc
+│   ├── App.vue                   # Componente raiz
+│   ├── main.js                   # Arquivo de entrada
+│   └── style.css                 # Estilos globais + smooth scroll
+├── index.html                    # HTML principal
+├── .env.example                  # Variáveis de ambiente (template)
+├── .gitignore                    # Arquivos ignorados pelo Git
+├── tailwind.config.js            # Configuração Tailwind CSS
+├── vite.config.js                # Configuração Vite
+├── postcss.config.js             # Configuração PostCSS
+├── package.json                  # Dependências e scripts
+└── README.md                     # Este arquivo
 ```
 
 ---
@@ -157,10 +175,21 @@ bloodborne-rpg/
 
 Este projeto está em desenvolvimento ativo. Aqui estão as funcionalidades planejadas:
 
+### ✅ Concluído
+- [x] Sistema de sessões com IDs únicos
+- [x] Sincronização realtime com Firebase
+- [x] Ficha de personagem responsiva
+- [x] Dashboard do mestre funcional
+- [x] Tracker de iniciativa integrado
+- [x] Design Soulslike com estética profissional
+- [x] Responsividade completa (mobile-first)
+- [x] Smooth scrolling e animações
+
 ### 🔄 Em Progresso
 - [ ] Sistema de rolagem de dados virtual
-- [ ] Biblioteca de monstros e NPCs para o mestre
-- [ ] Sistema de habilidades especiais dos personagens
+- [ ] Biblioteca de monstros e NPCs
+- [ ] Sistema de habilidades especiais
+- [ ] Melhorias na UX do lobby
 
 ### 📋 Planejado para v1.0
 - [ ] Inventário detalhado com itens e descrições
@@ -173,10 +202,10 @@ Este projeto está em desenvolvimento ativo. Aqui estão as funcionalidades plan
 ### 🚀 Ideias Futuras
 - [ ] Sistema de experiência e progressão
 - [ ] Chat integrado na sessão
-- [ ] Suporte para múltiplas campanhas
+- [ ] Suporte para múltiplas campanhas paralelas
 - [ ] Importação/exportação de personagens
-- [ ] Dark mode completo
-- [ ] App nativa (PWA ou React Native)
+- [ ] Temas visuais (já tem dark theme)
+- [ ] App nativa (PWA ou Electron)
 
 ---
 
@@ -208,7 +237,7 @@ Contribuições são bem-vindas! Para contribuir:
 
 ## 🐛 Reportando Issues
 
-Encontrou um bug? Abra uma [issue](https://github.com/SEU-USUARIO/bloodborne-rpg/issues) com:
+Encontrou um bug? Abra uma [issue](https://github.com/Pedro-Martins-Nascimento/bloodborne-rpg/issues) com:
 - Descrição clara do problema
 - Passos para reproduzir
 - Comportamento esperado vs real
@@ -224,7 +253,7 @@ Este projeto está licenciado sob a [MIT License](LICENSE) - veja o arquivo [LIC
 
 ## 👤 Autor
 
-**Pedro** - [GitHub](https://github.com/SEU-USUARIO)
+**Pedro Martins Nascimento** - [GitHub](https://github.com/Pedro-Martins-Nascimento)
 
 ---
 
@@ -232,15 +261,15 @@ Este projeto está licenciado sob a [MIT License](LICENSE) - veja o arquivo [LIC
 
 - Fromsoft por Bloodborne, que inspirou este projeto
 - Comunidade Vue.js por excelentes ferramentas e documentação
-- Todos os contribuidores e testers beta
+- Firebase por infraestrutura realtime confiável
+- Todos os contribuidores e testers
 
 ---
 
 ## 📞 Suporte
 
 Se tiver dúvidas ou sugestões:
-- Abra uma [issue](https://github.com/SEU-USUARIO/bloodborne-rpg/issues)
-- Entre em contato via email
+- Abra uma [issue](https://github.com/Pedro-Martins-Nascimento/bloodborne-rpg/issues)
 - Confira as discussões do projeto
 
 **Divirta-se matando bestas!** 🩸
