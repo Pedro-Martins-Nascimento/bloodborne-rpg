@@ -5,6 +5,7 @@ import { subscribeToCharacter, updateCharacterData, subscribeToCombat, subscribe
 import { getDatabase, ref as dbRef, onValue, update } from 'firebase/database';
 import { getApp } from 'firebase/app';
 import InitiativeTracker from '../components/InitiativeTracker.vue';
+import HunterArchive from '../components/HunterArchive.vue';
 
 const route = useRoute();
 const charId = route.params.id;
@@ -67,10 +68,41 @@ const alterarRecurso = (tipo, valor) => {
         updateCharacterData(charId, { [tipo]: novoValor });
     }
 };
+
+const archiveOpen = ref(false);
 </script>
 
 <template>
     <div v-if="character" class="min-h-screen bg-black text-gray-300 font-sans overflow-x-hidden">
+        <!-- BOTÃO CIRCULAR FAB - HUNTER'S ARCHIVE (Bloodborne Style) -->
+        <button
+            @click="archiveOpen = true"
+            class="fixed bottom-8 right-8 z-40 w-16 h-16 sm:w-20 sm:h-20 rounded-full transition-all duration-300 flex items-center justify-center group"
+            :style="{
+                background: 'radial-gradient(circle at 30% 30%, rgba(220, 38, 38, 0.9), rgba(127, 29, 29, 0.95), rgba(59, 13, 13, 0.98))',
+                boxShadow: '0 0 30px rgba(220, 38, 38, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -2px 5px rgba(0, 0, 0, 0.5)'
+            }"
+            title="Hunter's Archive"
+        >
+            <!-- Ornate border effect -->
+            <div class="absolute inset-0 rounded-full border border-amber-700/50" style="border-width: 2px;"></div>
+            <div class="absolute inset-1 rounded-full border border-amber-600/20"></div>
+            
+            <!-- Inner glow -->
+            <div class="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                 style="box-shadow: inset 0 0 20px rgba(220, 38, 38, 0.4)">
+            </div>
+            
+            <!-- Icon -->
+            <span class="material-symbols-outlined text-amber-100 text-3xl sm:text-4xl z-10 font-light group-hover:scale-110 transition-transform duration-300">library_books</span>
+            
+            <!-- Pulse effect on hover -->
+            <div class="absolute inset-0 rounded-full border border-red-400/0 group-hover:border-red-400/40 group-hover:animate-pulse transition-all duration-300"></div>
+        </button>
+
+        <!-- HUNTER'S ARCHIVE COMPONENT -->
+        <HunterArchive v-model:open="archiveOpen" />
+
         <!-- HEADER -->
         <header class="flex flex-col md:flex-row justify-between items-end border-b border-white/10 pb-4 md:pb-6 lg:pb-8 gap-4 md:gap-6 lg:gap-8 max-w-7xl mx-auto p-3 sm:p-4 md:p-6 lg:p-8">
             <div class="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4 md:gap-6 w-full sm:w-auto">
@@ -376,6 +408,9 @@ const alterarRecurso = (tipo, valor) => {
                 </div>
             </div>
         </div>
+
+        <!-- ESPAÇO EXTRA PARA SCROLL -->
+        <div class="h-32 sm:h-40 md:h-48"></div>
 
         <!-- Combate -->
         <InitiativeTracker v-if="combatState.ativo" :combat-state="combatState" :character-name="character.nome" :character-id="charId" />

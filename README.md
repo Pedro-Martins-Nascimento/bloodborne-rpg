@@ -51,6 +51,17 @@ Um aplicativo web moderno e responsivo construído para auxiliar mestres e jogad
 - **Efeitos Especiais:** Aplique status como Frenesi, Veneno e outros em tempo real
 - **Dashboard Intuitivo:** Interface organizada com múltiplos painéis para controle total
 
+#### ✨ Master Dashboard - Melhorias Recentes (v1.1.0)
+- **🔍 Filtro de Pesquisa:** Busque jogadores em tempo real por nome
+- **📊 HP Bar Dinâmica:** Barra visual com cores que mudam com HP (Verde → Amarelo → Laranja → Vermelho)
+- **⚔ Gerenciamento de Armas Aprimorado:** Interface intuitiva para adicionar/remover equipamentos
+- **🎯 Indicador de Arquétipo:** Visualize a primeira arma/classe de cada jogador no card
+- **🎨 Glassmorphism Redesignado:** Painéis com efeitos visuais aprimorados e animações suaves
+- **📱 Responsividade 4-Coluna:** Layout otimizado (1 combate sticky + 3 colunas de jogadores)
+- **⚡ Slider de HP Customizado:** Controle de HP com efeitos de brilho e cores Bloodborne
+
+Veja [MASTER_DASHBOARD_IMPROVEMENTS.md](./MASTER_DASHBOARD_IMPROVEMENTS.md) para detalhes completos.
+
 ### Design & Estética 🎨
 - **Soulslike Visual:** Fontes Cinzel (títulos), Playfair Display (descrições), Material Symbols (ícones)
 - **Glassmorphism:** Painéis com efeito de vidro e bordas ornamentadas

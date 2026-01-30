@@ -90,48 +90,77 @@ const voltarParaLogin = () => {
 </script>
 
 <template>
-    <div class="min-h-screen flex flex-col items-center justify-center p-6 bg-black">
-        <div class="w-full max-w-md">
-            <h1 class="text-4xl font-gothic text-gold text-center mb-2">Sala de Jogo</h1>
-            <p class="text-gray-400 text-center mb-8 text-sm">Aguardando ficha...</p>
+    <div class="min-h-screen flex items-center justify-center p-6 bg-black relative overflow-hidden">
+        <!-- Fundo Bloodborne -->
+        <div class="absolute inset-0 z-0">
+            <div class="absolute inset-0 bg-gradient-to-b from-black via-red-950/10 to-black"></div>
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(139,0,0,0.05),transparent_70%)]"></div>
+        </div>
 
-            <!-- Status na Sala -->
-            <div class="bg-yharnam-paper border border-green-600 rounded p-6 mb-6">
-                <div class="flex items-center justify-center mb-4">
-                    <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse mr-2"></div>
-                    <span class="text-gray-300 text-sm">Conectado à sessão</span>
+        <div class="relative z-10 w-full max-w-lg">
+            <!-- Título -->
+            <div class="text-center mb-8">
+                <h1 class="text-5xl font-cinzel text-amber-100 tracking-widest mb-2">SALA DE JOGO</h1>
+                <div class="flex items-center justify-center gap-3 mb-4">
+                    <div class="h-px w-12 bg-gradient-to-r from-transparent to-red-900/50"></div>
+                    <p class="text-red-400 text-xs uppercase tracking-widest font-cinzel">Aguardando Mestre</p>
+                    <div class="h-px w-12 bg-gradient-to-l from-transparent to-red-900/50"></div>
+                </div>
+            </div>
+
+            <!-- Card Principal -->
+            <div class="glass-panel border-2 border-red-900/50 rounded-lg p-8 mb-6">
+                <!-- Status Conectado -->
+                <div class="flex items-center justify-center mb-6">
+                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
+                    <span class="text-green-400 text-xs uppercase tracking-widest font-cinzel">Conectado</span>
                 </div>
                 
-                <div class="bg-green-900/30 p-4 rounded border border-green-700 mb-4 text-center">
-                    <p class="text-xs text-green-400 uppercase tracking-widest mb-2">✅ Na Sala</p>
-                    <p class="text-lg font-gothic text-green-300">Você entrou na sala de jogo!</p>
+                <!-- Badge de Sucesso -->
+                <div class="bg-green-900/20 border border-green-700/50 rounded p-5 mb-6 text-center">
+                    <div class="text-4xl mb-3">🗡️</div>
+                    <p class="text-xs text-green-500 uppercase tracking-widest mb-2 font-cinzel">✓ Entrada Aprovada</p>
+                    <p class="text-lg font-cinzel text-green-300">Você entrou na caçada!</p>
                 </div>
 
-                <div class="bg-black/50 p-4 rounded border border-gray-700 mb-4">
-                    <p class="text-xs text-gray-500 mb-1">ID da Sessão:</p>
-                    <p class="text-xl font-mono font-bold text-gold">{{ sessaoId }}</p>
+                <!-- ID da Sessão -->
+                <div class="bg-black/60 border border-gray-800 rounded p-4 mb-4">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-cinzel">Código da Sessão</p>
+                    <p class="text-3xl font-mono font-bold text-amber-300 tracking-wider select-all">{{ sessaoId }}</p>
                 </div>
 
-                <div v-if="meuPersonagem" class="text-center border-t border-gray-700 pt-4 mt-4">
-                    <p class="text-xs text-gray-600 mb-1">Seu Nome:</p>
-                    <p class="text-lg text-blue-300 font-gothic">{{ meuPersonagem.nome }}</p>
+                <!-- Nome do Jogador -->
+                <div v-if="meuPersonagem" class="bg-black/30 border border-gray-800 rounded p-4 mb-6">
+                    <p class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-cinzel">Hunter</p>
+                    <p class="text-2xl text-amber-100 font-cinzel tracking-wide">{{ meuPersonagem.nome }}</p>
                 </div>
 
                 <!-- Aguardando Ficha -->
-                <div class="border-t border-gray-700 pt-4 mt-4 text-center">
-                    <p class="text-sm text-yellow-300 animate-pulse">
-                        ⏳ Mestre está escolhendo sua ficha...
+                <div class="border-t-2 border-red-900/50 pt-6 text-center">
+                    <div class="animate-pulse mb-3">
+                        <span class="text-4xl">⏳</span>
+                    </div>
+                    <p class="text-amber-300 font-cinzel text-sm mb-2">
+                        O Mestre está preparando sua ficha...
                     </p>
+                    <p class="text-gray-600 text-xs">Aguarde, caçador</p>
                 </div>
             </div>
 
             <!-- Botão Voltar -->
             <button 
                 @click="voltarParaLogin"
-                class="w-full text-gray-500 hover:text-gray-400 text-xs py-2 border-t border-gray-700"
+                class="w-full text-gray-600 hover:text-red-400 text-xs py-3 uppercase tracking-widest font-cinzel transition-colors"
             >
-                Voltar para Login
+                ← Voltar ao Início
             </button>
         </div>
     </div>
 </template>
+
+<style scoped>
+.glass-panel {
+    background: linear-gradient(135deg, rgba(10, 10, 10, 0.9) 0%, rgba(26, 26, 26, 0.7) 100%);
+    backdrop-filter: blur(10px);
+}
+</style>
