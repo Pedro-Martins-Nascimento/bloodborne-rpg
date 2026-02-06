@@ -42,6 +42,11 @@ Um aplicativo web moderno e responsivo construído para auxiliar mestres e jogad
 - **Smooth Scrolling:** Navegação suave entre seções da ficha
 - **Indicadores Visuais:** Barras de status animadas e efeitos especiais destacados
 - **Atributos Adaptáveis:** Labels abreviados em dispositivos móveis para melhor legibilidade
+- **Proteção de Atributos:** Jogadores não podem modificar atributos (apenas mestre pode editar pós-atribuição)
+- **Aba de Notas Expandida:** 
+  - 📖 Descrição detalhada da classe (mecânicas e estratégias)
+  - ⭐ Talentos com descrições individuais para melhor compreensão das habilidades
+- **Sem Botões de Ação Não-Autorizados:** Botões de rolar dados e modificadores removidos para jogadores
 
 ### Mestre 🎭
 - **Painel de Controle Completo:** Gerencie vida, aplicar efeitos especiais e controlar sessões
@@ -50,6 +55,8 @@ Um aplicativo web moderno e responsivo construído para auxiliar mestres e jogad
 - **Lobby de Sessão:** Gerenciar entrada de jogadores e atribuição de personagens
 - **Efeitos Especiais:** Aplique status como Frenesi, Veneno e outros em tempo real
 - **Dashboard Intuitivo:** Interface organizada com múltiplos painéis para controle total
+- **Edição Pós-Atribuição:** Mestres podem editar atributos de jogadores após a atribuição inicial
+- **Interface Limpa:** Descrições mecânicas removidas do modal de atribuição para melhor usabilidade
 
 #### ✨ Master Dashboard - Melhorias Recentes (v1.1.0)
 - **🔍 Filtro de Pesquisa:** Busque jogadores em tempo real por nome
@@ -66,9 +73,12 @@ Veja [MASTER_DASHBOARD_IMPROVEMENTS.md](./MASTER_DASHBOARD_IMPROVEMENTS.md) para
 - **Soulslike Visual:** Fontes Cinzel (títulos), Playfair Display (descrições), Material Symbols (ícones)
 - **Glassmorphism:** Painéis com efeito de vidro e bordas ornamentadas
 - **Responsividade Completa:** 5 níveis de breakpoints (xs, sm, md, lg, xl)
+  - Login totalmente responsivo com modais adaptativos
+  - Layouts fluidos que funcionam em qualquer dispositivo
 - **Smooth Animations:** Transições suaves e comportamento de scroll otimizado
 - **Dark Theme:** Design escuro imersivo inspirado em Yharnam
 - **Acessibilidade:** Contraste adequado e tamanhos de fonte adaptativos
+- **Favicon Personalizado:** Logo SVG como favicon da aba do navegador
 
 ---
 
@@ -155,24 +165,34 @@ npm run preview  # Previsualiza build de produção localmente
 bloodborne-rpg/
 ├── src/
 │   ├── components/               # Componentes Vue reutilizáveis
-│   │   └── InitiativeTracker.vue # Tracker de iniciativa integrado
+│   │   ├── InitiativeTracker.vue # Tracker de iniciativa integrado
+│   │   ├── CharacterCreator.vue  # Criador de personagem
+│   │   ├── ClassSelector.vue     # Seletor de classe
+│   │   ├── GunslingerCreator.vue # Creator específico para Gunslinger
+│   │   ├── HunterArchive.vue     # Arquivo de caçadores
 │   ├── views/                    # Páginas principais
-│   │   ├── Login.vue             # Seleção Mestre/Jogador
+│   │   ├── Login.vue             # Seleção Mestre/Jogador (Responsivo)
 │   │   ├── SessionSetup.vue      # Criação de sessão (Mestre)
 │   │   ├── SessionLobby.vue      # Lobby de sessão
 │   │   ├── ApprovedLobby.vue     # Sala de espera (Jogador)
-│   │   ├── MasterDashboard.vue   # Dashboard do Mestre
-│   │   └── PlayerSheet.vue       # Ficha responsiva do Jogador
+│   │   ├── MasterDashboard.vue   # Dashboard do Mestre com edição de atributos
+│   │   ├── PlayerSheet.vue       # Ficha responsiva do Jogador (protegida)
+│   │   └── PlayerSheet.vue.backup # Backup da ficha
 │   ├── router/                   # Configuração de rotas (Vue Router)
 │   ├── services/                 # Integração com Firebase
 │   │   └── firebase.js           # Funções realtime + CRUD
-│   ├── assets/                   # Imagens, ícones, etc
+│   ├── assets/                   # Imagens, ícones, logos
+│   │   ├── yharnam-hero.png      # Imagem hero do Bloodborne
+│   │   └── logo.svg              # Logo personalizado
 │   ├── App.vue                   # Componente raiz
 │   ├── main.js                   # Arquivo de entrada
 │   └── style.css                 # Estilos globais + smooth scroll
-├── index.html                    # HTML principal
+├── classes/                      # Arquivos de definição de classes (ignorado no git)
+├── fichas/                       # Arquivos de fichas de personagem (ignorado no git)
+├── marca_cacador/                # Arquivos de marcas de caçador (ignorado no git)
+├── index.html                    # HTML principal com favicon SVG
 ├── .env.example                  # Variáveis de ambiente (template)
-├── .gitignore                    # Arquivos ignorados pelo Git
+├── .gitignore                    # Arquivos ignorados pelo Git (inclui classes/, fichas/, marca_cacador/)
 ├── tailwind.config.js            # Configuração Tailwind CSS
 ├── vite.config.js                # Configuração Vite
 ├── postcss.config.js             # Configuração PostCSS
@@ -193,8 +213,15 @@ Este projeto está em desenvolvimento ativo. Aqui estão as funcionalidades plan
 - [x] Dashboard do mestre funcional
 - [x] Tracker de iniciativa integrado
 - [x] Design Soulslike com estética profissional
-- [x] Responsividade completa (mobile-first)
+- [x] Responsividade completa (mobile-first) - Login incluído
 - [x] Smooth scrolling e animações
+- [x] **5 Classes com Descrições Detalhadas** (Gunslinger, Alchemist, Blood Cursed, Guerreiro Ressonante, Gunbreaker)
+- [x] **Sistema de Proteção de Atributos** - Jogadores não podem modificar atributos
+- [x] **Remoção de Botões Não-Autorizados** - Botões de ação removidos para jogadores
+- [x] **Aba de Notas Expandida** - Descrições de classe e talentos para jogadores
+- [x] **Edição Pós-Atribuição** - Mestres podem editar atributos após atribuição
+- [x] **Optimização de UI do Master** - Descrições removidas do modal de atribuição
+- [x] **Favicon Personalizado** - Logo SVG na aba do navegador
 
 ### 🔄 Em Progresso
 - [ ] Sistema de rolagem de dados virtual

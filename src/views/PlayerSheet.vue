@@ -372,16 +372,8 @@ const switchTab = (tab) => {
                         <div class="text-2xl font-bold text-white mb-1">
                             {{ Math.floor(((character[attr] || 10) - 10) / 2) >= 0 ? '+' : '' }}{{ Math.floor(((character[attr] || 10) - 10) / 2) }}
                         </div>
-                        <!-- Apenas Mestre pode editar -->
-                        <div v-if="isMaster" class="flex items-center justify-center gap-1 mt-2">
-                            <button @click="alterarRecurso(attr, -1)" 
-                                    class="w-6 h-6 transition-colors text-gray-600 hover:text-white cursor-pointer">−</button>
-                            <div class="text-sm text-gray-600 border-t border-gray-800 px-2">{{ character[attr] || 10 }}</div>
-                            <button @click="alterarRecurso(attr, 1)" 
-                                    class="w-6 h-6 transition-colors text-gray-600 hover:text-white cursor-pointer">+</button>
-                        </div>
-                        <!-- Jogador apenas visualiza -->
-                        <div v-else class="mt-2">
+                        <!-- Visualização apenas -->
+                        <div class="mt-2">
                             <div class="text-sm text-gray-500 text-center">{{ character[attr] || 10 }}</div>
                         </div>
                     </div>
