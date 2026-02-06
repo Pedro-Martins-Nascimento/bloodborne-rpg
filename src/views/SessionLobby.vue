@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { getDatabase, ref as dbRef, onValue } from 'firebase/database';
+import { getDatabase, ref as dbRef, onValue, get } from 'firebase/database';
 import { getApp } from 'firebase/app';
 
 const router = useRouter();
@@ -9,9 +9,15 @@ const route = useRoute();
 const sessaoId = route.params.id;
 const playerId = route.params.playerId;
 const meuPersonagem = ref(null);
+const sessaoAtiva = ref(true);
+const sessaoEncerradaMensagem = ref('');
+const redirectCountdown = ref(5);
 const db = getDatabase(getApp());
 let unsubscribe = null;
+let unsubscribeSessao = null;
 let jaRedirecionou = false; // Previne múltiplos redirects
+let pollTimer = null;
+let redirectTimer = null;
 
 onMounted(() => {
     console.log('SessionLobby montado - SessionID:', sessaoId, 'PlayerID:', playerId);
@@ -26,6 +32,33 @@ onMounted(() => {
             console.log('SessionLobby - Dados recebidos:', data);
             meuPersonagem.value = data;
         });
+
+        // Poll a existência da sessão a cada 5s
+        const sessionRef = dbRef(db, `sessoes/${sessaoId}`);
+        const checkSession = async () => {
+            try {
+                const snap = await get(sessionRef);
+                if (!snap.exists()) {
+                    sessaoAtiva.value = false;
+                    sessaoEncerradaMensagem.value = 'Sessão encerrada pelo mestre.';
+                    if (!redirectTimer) {
+                        redirectCountdown.value = 5;
+                        redirectTimer = setInterval(() => {
+                            redirectCountdown.value -= 1;
+                            if (redirectCountdown.value <= 0) {
+                                clearInterval(redirectTimer);
+                                redirectTimer = null;
+                                router.push('/');
+                            }
+                        }, 1000);
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao checar sessão:', error);
+            }
+        };
+        checkSession();
+        pollTimer = setInterval(checkSession, 5000);
     } else {
         console.error('SessionID ou PlayerID está vazio!');
     }
@@ -86,6 +119,15 @@ watch(() => meuPersonagem.value?.esperando, async (esperando, oldEsperando) => {
 
 onBeforeUnmount(() => {
     if (unsubscribe) unsubscribe();
+    if (unsubscribeSessao) unsubscribeSessao();
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+    if (redirectTimer) {
+        clearInterval(redirectTimer);
+        redirectTimer = null;
+    }
 });
 
 const voltarParaLogin = () => {
@@ -103,6 +145,13 @@ const irParaFicha = () => {
         <div class="w-full max-w-md">
             <h1 class="text-4xl font-gothic text-blood text-center mb-2">Aguardando Ficha</h1>
             <p class="text-gray-400 text-center mb-8 text-sm">O mestre está atribuindo sua ficha...</p>
+
+            <!-- Sessão Encerrada -->
+            <div v-if="!sessaoAtiva" class="bg-red-900/30 border border-red-700 rounded p-4 mb-6 text-center">
+                <p class="text-red-300 text-sm uppercase tracking-widest mb-2">⚠ Sessão encerrada</p>
+                <p class="text-gray-300 text-sm">{{ sessaoEncerradaMensagem }}</p>
+                <p class="text-gray-500 text-xs mt-2">Voltando ao início em {{ redirectCountdown }}s...</p>
+            </div>
 
             <!-- Status de Conexão -->
             <div class="bg-yharnam-paper border border-gray-700 rounded p-6 mb-6">

@@ -12,6 +12,12 @@ const mestrado = 'mestre';
 const criarSessao = async () => {
     carregando.value = true;
     try {
+        // Garantir que o userId do mestre está salvo
+        if (!localStorage.getItem('userId') || !localStorage.getItem('userId').startsWith('mestre_')) {
+            const mestreId = 'mestre_' + Date.now();
+            localStorage.setItem('userId', mestreId);
+        }
+        
         const id = await createSession(mestrado, {
             nome_mestre: 'Mestre Bloodborne',
             jogadores_conectados: 0

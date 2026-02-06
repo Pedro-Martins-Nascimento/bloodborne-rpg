@@ -1,0 +1,883 @@
+<script setup>
+import { ref, onMounted, computed } from 'vue';
+import { useRoute } from 'vue-router';
+import { subscribeToCharacter, updateCharacterData, subscribeToCombat, subscribeToSessionCombat } from '../services/firebase';
+import { getDatabase, ref as dbRef, onValue, update } from 'firebase/database';
+import { getApp } from 'firebase/app';
+import InitiativeTracker from '../components/InitiativeTracker.vue';
+import HunterArchive from '../components/HunterArchive.vue';
+
+const route = useRoute();
+const charId = route.params.id;
+const userId = ref(localStorage.getItem('userId') || '');
+const isMaster = computed(() => {
+    const result = userId.value.startsWith('mestre_');
+    console.log('PlayerSheet - userId:', userId.value, 'isMaster:', result);
+    return result;
+});
+const character = ref(null);
+const combatState = ref({ ativo: false });
+const db = getDatabase(getApp());
+const activeTab = ref('status');
+
+const isSession = charId.includes('_');
+const sessionId = isSession ? charId.split('_')[0] : null;
+
+const hpPercentage = computed(() => {
+    if (!character.value || !character.value.hp_max) return 0;
+    return (character.value.hp_atual / character.value.hp_max) * 100;
+});
+
+const staminaPercentage = computed(() => {
+    if (!character.value) return 0;
+    return ((character.value.frascos || 0) / 5) * 100;
+});
+
+const frenzySusceptibility = computed(() => {
+    if (!character.value) return 0;
+    return (character.value.insight || 0) / 50 * 100;
+});
+
+onMounted(() => {
+    // Garantir que userId está atualizado
+    userId.value = localStorage.getItem('userId') || '';
+    console.log('PlayerSheet onMounted - userId:', userId.value, 'isMaster:', isMaster.value);
+    
+    console.log('PlayerSheet montado - CharID:', charId, 'IsSession:', isSession, 'SessionID:', sessionId);
+    if (isSession && sessionId) {
+        const charRef = dbRef(db, `sessoes/${sessionId}/personagens/${charId}`);
+        console.log('PlayerSheet - Observando:', `sessoes/${sessionId}/personagens/${charId}`);
+        onValue(charRef, (snapshot) => {
+            const data = snapshot.val();
+            console.log('PlayerSheet - Dados recebidos:', data);
+            character.value = data;
+        });
+        
+        const combatRef = dbRef(db, `sessoes/${sessionId}/combate`);
+        onValue(combatRef, (snapshot) => {
+            combatState.value = snapshot.val() || { ativo: false };
+        });
+    } else {
+        subscribeToCharacter(charId, (data) => {
+            character.value = data;
+        });
+        subscribeToCombat((data) => {
+            combatState.value = data;
+        });
+    }
+});
+
+const alterarRecurso = (tipo, valor) => {
+    if (!isMaster.value) {
+        alert('❌ Apenas o Mestre pode editar atributos!');
+        return;
+    }
+    if (!character.value) return;
+    const novoValor = (character.value[tipo] || 0) + valor;
+    if (novoValor < 0) return;
+    
+    if (isSession && sessionId) {
+        const charRef = dbRef(db, `sessoes/${sessionId}/personagens/${charId}`);
+        update(charRef, { [tipo]: novoValor });
+    } else {
+        updateCharacterData(charId, { [tipo]: novoValor });
+    }
+};
+
+const archiveOpen = ref(false);
+
+// Detectar se é Gunslinger
+const isGunslinger = computed(() => character.value?.classe === 'Gunslinger');
+
+// Funções Gunslinger
+const usarTiroEspecial = (tiro) => {
+    if (!character.value || !isGunslinger.value) return;
+    if (character.value.grit_atual <= 0) {
+        alert('❌ Sem pontos de Grit disponíveis!');
+        return;
+    }
+    
+    const novoGrit = character.value.grit_atual - tiro.custo;
+    if (novoGrit < 0) {
+        alert(`❌ Grit insuficiente! Você tem ${character.value.grit_atual}, precisa de ${tiro.custo}.`);
+        return;
+    }
+    
+    if (isSession && sessionId) {
+        const charRef = dbRef(db, `sessoes/${sessionId}/personagens/${charId}`);
+        update(charRef, { grit_atual: novoGrit });
+    } else {
+        updateCharacterData(charId, { grit_atual: novoGrit });
+    }
+    
+    alert(`✅ ${tiro.nome} usado! ${tiro.efeito}`);
+};
+
+const recuperarGrit = () => {
+    if (!character.value || !isGunslinger.value) return;
+    const novoGrit = Math.min(character.value.grit_max, character.value.grit_atual + 1);
+    
+    if (isSession && sessionId) {
+        const charRef = dbRef(db, `sessoes/${sessionId}/personagens/${charId}`);
+        update(charRef, { grit_atual: novoGrit });
+    } else {
+        updateCharacterData(charId, { grit_atual: novoGrit });
+    }
+};
+
+const usarMunicao = () => {
+    if (!character.value || !isGunslinger.value) return;
+    if (character.value.municao <= 0) {
+        alert('❌ Sem munição!');
+        return;
+    }
+    
+    const novaMunicao = character.value.municao - 1;
+    if (isSession && sessionId) {
+        const charRef = dbRef(db, `sessoes/${sessionId}/personagens/${charId}`);
+        update(charRef, { municao: novaMunicao });
+    } else {
+        updateCharacterData(charId, { municao: novaMunicao });
+    }
+};
+
+const switchTab = (tab) => {
+    activeTab.value = tab;
+};
+</script>
+
+<template>
+    <div v-if="character" class="min-h-screen bg-gradient-to-b from-[#1f0505] to-[#0d0d0d] text-gray-300 font-sans pb-20">
+        
+        <!-- HEADER FIXO -->
+        <header class="bg-gradient-to-b from-[#1f0505] to-[#0d0d0d] border-b-2 border-red-900 p-4 text-center sticky top-0 z-30 backdrop-blur-sm">
+            <h1 class="font-cinzel text-amber-600 text-2xl tracking-[0.2em] uppercase mb-1 text-shadow">
+                {{ character.nome }}
+            </h1>
+            <div class="flex justify-center gap-3 text-gray-500 text-sm italic">
+                <span v-if="isGunslinger">🎯 Gunslinger</span>
+                <span v-else>⚔ Caçador</span>
+                <span>•</span>
+                <span>Nível {{ character.nivel || character.level || 1 }}</span>
+            </div>
+        </header>
+
+        <!-- HUD DE STATUS FIXO -->
+        <div class="bg-[#1a1a1a] p-4 border-b border-gray-800 sticky top-[88px] z-20 backdrop-blur-sm">
+            <!-- Barra de Vida -->
+            <div class="relative bg-[#333] h-5 rounded-sm mb-2 border border-black overflow-hidden">
+                <div 
+                    class="absolute top-0 left-0 h-full bg-red-900 transition-all duration-300"
+                    :style="{ width: hpPercentage + '%', boxShadow: '0 0 10px rgba(138, 3, 3, 0.8)' }"
+                ></div>
+                <div class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white text-shadow z-10">
+                    {{ character.hp_atual || 0 }} / {{ character.hp_max || 0 }} PV
+                </div>
+            </div>
+
+            <!-- Stats Principais em Círculos -->
+            <div class="flex justify-around items-center mt-4">
+                <!-- CA -->
+                <div class="flex flex-col items-center justify-center w-16 h-16 rounded-full border-2 border-amber-700 relative">
+                    <span class="text-2xl font-cinzel font-bold text-amber-600">{{ character.ca || character.def_physical || 10 }}</span>
+                    <span class="text-[10px] text-gray-500 uppercase">CA</span>
+                </div>
+
+                <!-- Iniciativa -->
+                <div class="flex flex-col items-center justify-center w-16 h-16 rounded-full border-2 border-amber-700 relative">
+                    <span class="text-xl font-cinzel font-bold text-amber-600">{{ character.iniciativa >= 0 ? '+' : '' }}{{ character.iniciativa || 0 }}</span>
+                    <span class="text-[10px] text-gray-500 uppercase">Init.</span>
+                </div>
+
+                <!-- Deslocamento -->
+                <div class="flex flex-col items-center justify-center w-16 h-16 rounded-full border-2 border-amber-700 relative">
+                    <span class="text-xl font-cinzel font-bold text-amber-600">{{ character.deslocamento || 9 }}</span>
+                    <span class="text-[10px] text-gray-500 uppercase">Desl.</span>
+                </div>
+
+                <!-- Bônus Prof -->
+                <div class="flex flex-col items-center justify-center w-16 h-16 rounded-full border-2 border-red-700 relative">
+                    <span class="text-xl font-cinzel font-bold text-red-500">+{{ character.bonus_prof || 2 }}</span>
+                    <span class="text-[10px] text-gray-500 uppercase">Prof.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONTEÚDO DAS ABAS -->
+        <div class="p-4">
+
+            <!-- ABA STATUS -->
+            <div v-show="activeTab === 'status'" class="space-y-4 animate-fadeIn">
+                <!-- Grid de Atributos 3x2 -->
+                <div class="grid grid-cols-3 gap-3 mb-4">
+                    <div v-for="attr in ['forca', 'destreza', 'constituicao', 'inteligencia', 'sabedoria', 'carisma']" :key="attr"
+                         class="bg-[#111] border border-gray-800 rounded p-3 text-center">
+                        <div class="text-[10px] text-gray-500 uppercase mb-1">
+                            {{ { forca: 'FOR', destreza: 'DES', constituicao: 'CON', inteligencia: 'INT', sabedoria: 'SAB', carisma: 'CAR' }[attr] }}
+                        </div>
+                        <div class="text-2xl font-bold text-white mb-1">
+                            {{ Math.floor(((character[attr] || 10) - 10) / 2) >= 0 ? '+' : '' }}{{ Math.floor(((character[attr] || 10) - 10) / 2) }}
+                        </div>
+                        <!-- Apenas Mestre pode editar -->
+                        <div v-if="isMaster" class="flex items-center justify-center gap-1 mt-2">
+                            <button @click="alterarRecurso(attr, -1)" class="w-6 h-6 text-gray-600 hover:text-white">−</button>
+                            <div class="text-sm text-gray-600 border-t border-gray-800 px-2">{{ character[attr] || 10 }}</div>
+                            <button @click="alterarRecurso(attr, 1)" class="w-6 h-6 text-gray-600 hover:text-white">+</button>
+                        </div>
+                        <!-- Jogador apenas visualiza -->
+                        <div v-else class="mt-2">
+                            <div class="text-sm text-gray-500 text-center">{{ character[attr] || 10 }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Testes de Resistência -->
+                <div class="bg-[#151515] border border-gray-800 p-4 relative">
+                    <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-red-900 to-transparent"></div>
+                    <h3 class="font-cinzel text-gray-500 border-b border-gray-800 pb-2 mb-3 text-sm">RESISTÊNCIAS</h3>
+                    <ul class="space-y-2">
+                        <li v-for="(valor, nome) in (character.resistencias || {})" :key="nome"
+                            class="flex justify-between items-center border-b border-gray-900 pb-2">
+                            <span class="capitalize text-sm" :class="valor > 0 ? 'text-amber-600' : ''">
+                                {{ { forca: 'Força', destreza: 'Destreza', constituicao: 'Constituição', inteligencia: 'Inteligência', sabedoria: 'Sabedoria', carisma: 'Carisma' }[nome] || nome }}
+                            </span>
+                            <span class="font-mono">{{ valor >= 0 ? '+' : '' }}{{ valor }}</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Perícias -->
+                <div class="bg-[#151515] border border-gray-800 p-4 relative">
+                    <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-red-900 to-transparent"></div>
+                    <h3 class="font-cinzel text-gray-500 border-b border-gray-800 pb-2 mb-3 text-sm">PERÍCIAS</h3>
+                    <ul class="space-y-2 max-h-64 overflow-y-auto">
+                        <li v-for="(valor, nome) in (character.pericias || {})" :key="nome"
+                            class="flex justify-between items-center border-b border-gray-900 pb-2">
+                            <span class="capitalize text-sm" :class="valor > 0 ? 'text-amber-600' : ''">{{ nome }}</span>
+                            <span class="font-mono">{{ valor >= 0 ? '+' : '' }}{{ valor }}</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- ABA COMBATE -->
+            <div v-show="activeTab === 'combate'" class="space-y-4 animate-fadeIn">
+
+            <header class="grid grid-cols-1 md:grid-cols-12 gap-6 pb-6 border-b border-white/10 items-end">
+                <div class="md:col-span-4 flex items-center gap-4">
+                    <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-black/50 border border-red-700/30 flex items-center justify-center relative overflow-hidden">
+                        <span class="material-symbols-outlined text-3xl text-gray-400">account_circle</span>
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl sm:text-4xl md:text-5xl font-cinzel font-bold text-white tracking-wide uppercase leading-none">
+                            {{ character.nome }}
+                        </h1>
+                        <div class="flex items-center gap-2 mt-1">
+                            <span v-if="isGunslinger" class="text-red-700 text-xs sm:text-sm font-bold uppercase tracking-widest flex items-center gap-1">
+                                🎯 Gunslinger
+                            </span>
+                            <span v-else class="text-red-700 text-xs sm:text-sm font-bold uppercase tracking-widest flex items-center gap-1">
+                                Caçador Yharnam
+                            </span>
+                            <span class="text-[10px] text-gray-500 font-mono">// O Ferido</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="md:col-span-8 flex flex-col justify-end space-y-4">
+                    <div class="flex flex-wrap gap-6 text-sm font-mono border-b border-white/10 pb-2 mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-500 uppercase text-xs font-bold">Nível</span>
+                            <span class="text-xl font-bold text-white">{{ character.nivel || character.level || 1 }}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-500 uppercase text-xs font-bold">Insight</span>
+                            <span class="text-xl font-bold text-blue-400">{{ character.insight || 0 }}</span>
+                        </div>
+                        <div class="flex items-center gap-2 ml-auto">
+                            <span class="text-gray-500 uppercase text-xs font-bold">Ecos</span>
+                            <span class="text-xl font-bold text-amber-400 bg-amber-900/10 px-2 py-0.5 rounded">{{ character.ecos || 0 }}</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="relative group">
+                            <div class="flex justify-between text-xs uppercase font-bold tracking-wider mb-1">
+                                <span>HP</span>
+                                <span class="text-red-700 group-hover:text-red-400 transition-colors">{{ character.hp_atual }}/{{ character.hp_max }}</span>
+                            </div>
+                            <div class="h-1.5 w-full bg-black/40 rounded-full overflow-hidden">
+                                <div class="h-full bg-red-700 shadow-[0_0_10px_rgba(185,28,28,0.5)]" :style="{ width: hpPercentage + '%' }"></div>
+                            </div>
+                            <div class="text-[10px] text-gray-500 text-right mt-0.5 italic">Governado por Vitalidade</div>
+                        </div>
+
+                        <div class="relative group">
+                            <div class="flex justify-between text-xs uppercase font-bold tracking-wider mb-1">
+                                <span>Resistência</span>
+                                <span class="text-green-500 group-hover:text-green-400 transition-colors">{{ character.frascos }}/5</span>
+                            </div>
+                            <div class="h-1.5 w-full bg-black/40 rounded-full overflow-hidden">
+                                <div class="h-full bg-emerald-600" :style="{ width: staminaPercentage + '%' }"></div>
+                            </div>
+                            <div class="text-[10px] text-gray-500 text-right mt-0.5 italic">Governado por Resistência</div>
+                        </div>
+
+                        <div class="relative group">
+                            <div class="flex justify-between text-xs uppercase font-bold tracking-wider mb-1">
+                                <span>Res. Frenesi</span>
+                                <span class="text-purple-400 group-hover:text-purple-300 transition-colors">{{ Math.floor(frenzySusceptibility) }}%</span>
+                            </div>
+                            <div class="h-1.5 w-full bg-black/40 rounded-full overflow-hidden">
+                                <div class="h-full bg-purple-900" :style="{ width: frenzySusceptibility + '%' }"></div>
+                            </div>
+                            <div class="text-[10px] text-gray-500 text-right mt-0.5 italic">Governado por Insight</div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- CONTEÚDO PRINCIPAL -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <!-- COLUNA ESQUERDA: ATRIBUTOS + DEFESAS -->
+            <div class="md:col-span-1 lg:col-span-3 flex flex-col gap-2 md:gap-5 lg:gap-6">
+                <!-- ATRIBUTOS -->
+                <div class="glass-panel p-2 sm:p-4 md:p-5">
+                    <div class="flex justify-between items-center mb-2 border-b border-white/10 pb-1.5">
+                        <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400">Atributos</h2>
+                        <span class="text-[10px] text-gray-600 uppercase tracking-wide sm:tracking-widest">Mod</span>
+                    </div>
+                    <div class="space-y-0 divide-y divide-white/5">
+                        <div v-for="attr in ['forca', 'destreza', 'constituicao', 'inteligencia', 'sabedoria', 'carisma']" :key="attr"
+                             class="grid grid-cols-3 items-center py-2 sm:py-2 hover:bg-white/5 transition-colors group relative gap-2">
+                            <div class="flex items-center gap-0.5 sm:gap-1">
+                                <span class="text-xs sm:text-xs uppercase tracking-wider text-gray-400 font-cinzel group-hover:text-red-700 transition-colors capitalize">
+                                    {{ { forca: 'For', destreza: 'Des', constituicao: 'Con', inteligencia: 'Int', sabedoria: 'Sab', carisma: 'Car' }[attr] }}
+                                </span>
+                            </div>
+                            <!-- Mestre: com botões de edição -->
+                            <div v-if="isMaster" class="flex justify-center items-center gap-1">
+                                <button @click="alterarRecurso(attr, -1)" class="text-gray-600 hover:text-white text-sm sm:text-[10px] w-5 sm:w-4 h-5 sm:h-4 flex items-center justify-center border border-transparent hover:border-white/20">−</button>
+                                <span class="w-8 sm:w-8 text-center font-mono text-sm sm:text-sm stat-glow stat-dot font-bold">{{ character[attr] || 10 }}</span>
+                                <button @click="alterarRecurso(attr, 1)" class="text-gray-600 hover:text-white text-sm sm:text-[10px] w-5 sm:w-4 h-5 sm:h-4 flex items-center justify-center border border-transparent hover:border-white/20">+</button>
+                            </div>
+                            <!-- Jogador: apenas visualização -->
+                            <div v-else class="flex justify-center items-center">
+                                <span class="w-8 sm:w-8 text-center font-mono text-sm sm:text-sm stat-glow stat-dot font-bold text-gray-400">{{ character[attr] || 10 }}</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-amber-400 font-mono text-xs sm:text-sm font-bold">
+                                    {{ Math.floor(((character[attr] || 10) - 10) / 2) >= 0 ? '+' : '' }}{{ Math.floor(((character[attr] || 10) - 10) / 2) }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COMBATE -->
+                <div class="glass-panel p-2 sm:p-4 md:p-5">
+                    <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400 mb-2 border-b border-white/10 pb-1.5">Combate</h2>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="bg-black/30 border border-red-700/30 rounded p-2 text-center">
+                            <span class="text-[10px] text-gray-500 uppercase block mb-1">CA</span>
+                            <span class="text-red-400 font-mono text-2xl font-bold">{{ character.ca || character.def_physical || 10 }}</span>
+                        </div>
+                        <div class="bg-black/30 border border-amber-700/30 rounded p-2 text-center">
+                            <span class="text-[8px] text-gray-500 uppercase block mb-1">Inic</span>
+                            <span class="text-amber-400 font-mono text-xl font-bold">
+                                {{ character.iniciativa >= 0 ? '+' : '' }}{{ character.iniciativa || 0 }}
+                            </span>
+                        </div>
+                        <div class="bg-black/30 border border-blue-700/30 rounded p-2 text-center">
+                            <span class="text-[8px] text-gray-500 uppercase block mb-1">Desl</span>
+                            <span class="text-blue-400 font-mono text-xl font-bold">{{ character.deslocamento || 9 }}m</span>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-white/10">
+                        <div class="flex justify-between items-center text-xs mb-2">
+                            <span class="text-gray-500 uppercase tracking-wider text-[9px]">Dados de Vida</span>
+                            <span class="text-gray-300 font-mono">{{ character.dados_vida_restantes || 1 }}/{{ character.nivel || character.level || 1 }}</span>
+                        </div>
+                        <div class="text-[9px] text-gray-600 font-playfair italic">{{ character.dado_vida || '1d10' }} por descanso longo</div>
+                    </div>
+                </div>
+
+                <!-- TESTES DE RESISTÊNCIA -->
+                <div class="glass-panel p-2 sm:p-4 md:p-5">
+                    <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400 mb-2 border-b border-white/10 pb-1.5">Resistências</h2>
+                    <div class="space-y-1">
+                        <div v-for="(valor, nome) in (character.resistencias || {})" :key="nome"
+                             class="flex justify-between items-center py-1.5 hover:bg-white/5 transition-colors group">
+                            <span class="text-[11px] sm:text-xs text-gray-400 uppercase tracking-wider font-cinzel group-hover:text-amber-400 transition-colors capitalize">
+                                {{ { forca: 'For', destreza: 'Des', constituicao: 'Con', inteligencia: 'Int', sabedoria: 'Sab', carisma: 'Car' }[nome] || nome }}
+                            </span>
+                            <span class="text-white font-mono text-sm">{{ valor >= 0 ? '+' : '' }}{{ valor }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PERÍCIAS -->
+                <div class="glass-panel p-2 sm:p-4 md:p-5 flex-1">
+                    <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400 mb-2 border-b border-white/10 pb-1.5">Perícias</h2>
+                    <div class="space-y-0.5 max-h-48 overflow-y-auto">
+                        <div v-for="(valor, nome) in (character.pericias || {})" :key="nome"
+                             class="flex justify-between items-center py-1.5 hover:bg-white/5 transition-colors group">
+                            <span class="text-[11px] sm:text-[10px] text-gray-400 uppercase tracking-wider font-cinzel group-hover:text-amber-400 transition-colors capitalize">
+                                {{ nome }}
+                            </span>
+                            <span class="text-white font-mono text-sm">{{ valor >= 0 ? '+' : '' }}{{ valor }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DEFESAS -->
+                <div class="glass-panel p-2 sm:p-4 md:p-5 flex-1">
+                    <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400 mb-2 border-b border-white/10 pb-1.5">Defesa</h2>
+                    
+                    <!-- Recursos Gunslinger (se for Gunslinger) -->
+                    <div v-if="isGunslinger" class="mb-3 pb-3 border-b border-white/10">
+                        <div class="grid grid-cols-2 gap-2 mb-2">
+                            <div class="bg-amber-900/10 border border-amber-700/30 rounded p-2.5 group hover:bg-amber-900/20 transition-colors">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-[10px] text-gray-500 uppercase">Grit</span>
+                                    <button @click="recuperarGrit" 
+                                            class="text-[8px] text-amber-500 hover:text-amber-300 transition-colors">
+                                        +
+                                    </button>
+                                </div>
+                                <div class="font-mono">
+                                    <span class="text-amber-400 text-xl font-bold">{{ character.grit_atual || 0 }}</span>
+                                    <span class="text-gray-600 text-sm">/{{ character.grit_max || 2 }}</span>
+                                </div>
+                            </div>
+                            <div class="bg-blue-900/10 border border-blue-700/30 rounded p-2 group hover:bg-blue-900/20 transition-colors">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-[9px] text-gray-500 uppercase">Balas</span>
+                                    <button @click="usarMunicao" 
+                                            class="text-[8px] text-blue-500 hover:text-blue-300 transition-colors">
+                                        −
+                                    </button>
+                                </div>
+                                <span class="text-blue-400 font-mono text-lg font-bold">{{ character.municao || 0 }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-x-3 sm:gap-x-4 md:gap-x-6 gap-y-2 sm:gap-y-2.5 md:gap-y-3">
+                        <div class="flex justify-between items-center text-[11px] sm:text-xs border-b border-white/5 pb-1 group">
+                            <span class="text-gray-500 group-hover:text-gray-300 transition-colors">Físico</span>
+                            <span class="text-gray-200 font-mono text-sm">{{ character.def_physical || 0 }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[9px] sm:text-xs border-b border-white/5 pb-1 group">
+                            <span class="text-gray-500 group-hover:text-gray-300 transition-colors">Impacto</span>
+                            <span class="text-gray-200 font-mono text-xs">{{ character.def_blunt || 0 }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[9px] sm:text-xs border-b border-white/5 pb-1 group">
+                            <span class="text-gray-500 group-hover:text-gray-300 transition-colors">Perfur.</span>
+                            <span class="text-gray-200 font-mono text-xs">{{ character.def_thrust || 0 }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[9px] sm:text-xs border-b border-white/5 pb-1 group">
+                            <span class="text-gray-500 group-hover:text-gray-300 transition-colors">Sangue</span>
+                            <span class="text-gray-200 font-mono text-xs">{{ character.def_blood || 0 }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[9px] sm:text-xs border-b border-white/5 pb-1 group">
+                            <span class="text-gray-500 group-hover:text-gray-300 transition-colors">Arcano</span>
+                            <span class="text-gray-200 font-mono text-xs">{{ character.def_arcane || 0 }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[9px] sm:text-xs border-b border-white/5 pb-1 group">
+                            <span class="text-gray-500 group-hover:text-gray-300 transition-colors">Fogo</span>
+                            <span class="text-gray-200 font-mono text-xs">{{ character.def_fire || 0 }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[9px] sm:text-xs border-b border-white/5 pb-1 group">
+                            <span class="text-gray-500 group-hover:text-gray-300 transition-colors">Relâm.</span>
+                            <span class="text-gray-200 font-mono text-xs">{{ character.def_bolt || 0 }}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[9px] sm:text-xs border-b border-white/5 pb-1 group">
+                            <span class="text-gray-500 text-red-700/80 group-hover:text-red-700 transition-colors font-bold">Descoberta</span>
+                            <span class="text-white font-mono text-xs">{{ character.discovery || 0 }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLUNA CENTRAL: ARMAMENTO + INDUMENTÁRIA -->
+            <div class="md:col-span-1 lg:col-span-5 flex flex-col gap-2 md:gap-5 lg:gap-6">
+                <!-- ARMAMENTO -->
+                <div class="glass-panel p-2 sm:p-4 md:p-5">
+                    <div class="flex justify-between items-end mb-2 border-b border-white/10 pb-1.5">
+                        <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400">Armamento</h2>
+                        <span class="text-[10px] sm:text-[9px] md:text-[10px] text-gray-600 uppercase tracking-wide sm:tracking-widest">ATK</span>
+                    </div>
+                    <div class="grid grid-cols-1 gap-2 sm:gap-2.5 md:gap-3">
+                        <template v-if="character.equipamentos && character.equipamentos.length > 0">
+                            <div v-for="(eq, idx) in character.equipamentos" :key="idx"
+                                 class="ornate-border bg-black/30 p-2 sm:p-3 md:p-3 flex items-center gap-2 sm:gap-3 md:gap-4 hover:bg-white/5 transition-colors cursor-pointer group">
+                                <div class="w-10 sm:w-11 md:w-12 h-10 sm:h-11 md:h-12 bg-black/50 border border-white/10 flex-shrink-0 relative flex items-center justify-center">
+                                    <span class="material-symbols-outlined text-gray-500 text-lg md:text-xl">swords</span>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex justify-between items-center mb-0.5">
+                                        <span class="text-sm sm:text-sm md:text-sm text-gray-200 font-cinzel truncate group-hover:text-white transition-colors">{{ eq.nome }}</span>
+                                        <span class="text-sm sm:text-sm md:text-sm font-mono text-white ml-1">{{ eq.ataque || eq.dano || 0 }}</span>
+                                    </div>
+                                    <div class="flex gap-2 text-[9px] sm:text-[9px] md:text-[10px] text-gray-500 uppercase tracking-wider">
+                                        <span>{{ eq.tipo || 'Arma' }}</span>
+                                        <span v-if="eq.dano">• Dano: {{ eq.dano }}</span>
+                                        <span v-if="eq.alcance">• {{ eq.alcance }}</span>
+                                        <span v-if="eq.propriedades" class="truncate">• {{ eq.propriedades }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                        <div v-else class="border border-white/5 bg-black/10 p-2 sm:p-3 md:p-3 text-[8px] sm:text-xs text-gray-600 font-cinzel uppercase tracking-widest text-center opacity-50">
+                            Nenhuma Arma
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INDUMENTÁRIA -->
+                <div class="glass-panel p-2 sm:p-4 md:p-5 flex-1">
+                    <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400 mb-2 border-b border-white/10 pb-1.5">Indumentária</h2>
+                    <div class="grid grid-cols-2 gap-2 sm:gap-2.5 md:gap-3">
+                        <div class="flex items-center gap-2 sm:gap-3 border border-white/5 p-2 sm:p-2.5 md:p-3 bg-black/20 hover:border-white/20 transition-colors hover:bg-white/5 cursor-pointer">
+                            <span class="material-symbols-outlined text-gray-500 text-lg md:text-xl flex-shrink-0">skull</span>
+                            <div class="overflow-hidden min-w-0">
+                                <span class="block text-xs sm:text-xs md:text-xs text-gray-300 font-cinzel truncate">{{ character.armor_head || 'Chapéu' }}</span>
+                                <span class="block text-[7px] sm:text-[8px] md:text-[9px] text-gray-600 uppercase font-playfair italic">Cabeça</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 sm:gap-3 border border-white/5 p-2 sm:p-2.5 md:p-3 bg-black/20 hover:border-white/20 transition-colors hover:bg-white/5 cursor-pointer">
+                            <span class="material-symbols-outlined text-gray-500 text-lg md:text-xl flex-shrink-0">checkroom</span>
+                            <div class="overflow-hidden min-w-0">
+                                <span class="block text-xs sm:text-xs md:text-xs text-gray-300 font-cinzel truncate">{{ character.armor_chest || 'Armadura' }}</span>
+                                <span class="block text-[7px] sm:text-[8px] md:text-[9px] text-gray-600 uppercase font-playfair italic">Peito</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 sm:gap-3 border border-white/5 p-2 sm:p-2.5 md:p-3 bg-black/20 hover:border-white/20 transition-colors hover:bg-white/5 cursor-pointer">
+                            <span class="material-symbols-outlined text-gray-500 text-lg md:text-xl flex-shrink-0">front_hand</span>
+                            <div class="overflow-hidden min-w-0">
+                                <span class="block text-xs sm:text-xs md:text-xs text-gray-300 font-cinzel truncate">{{ character.armor_hands || 'Luvas' }}</span>
+                                <span class="block text-[7px] sm:text-[8px] md:text-[9px] text-gray-600 uppercase font-playfair italic">Mãos</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 sm:gap-3 border border-white/5 p-2 sm:p-2.5 md:p-3 bg-black/20 hover:border-white/20 transition-colors hover:bg-white/5 cursor-pointer">
+                            <span class="material-symbols-outlined text-gray-500 text-lg md:text-xl flex-shrink-0">steps</span>
+                            <div class="overflow-hidden min-w-0">
+                                <span class="block text-xs sm:text-xs md:text-xs text-gray-300 font-cinzel truncate">{{ character.armor_legs || 'Calças' }}</span>
+                                <span class="block text-[7px] sm:text-[8px] md:text-[9px] text-gray-600 uppercase font-playfair italic">Pernas</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- INVENTÁRIO -->
+                <div class="glass-panel p-2 sm:p-4 md:p-5">
+                    <div class="flex justify-between items-center mb-2 border-b border-white/10 pb-1.5">
+                        <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400">Inventário</h2>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[8px] text-gray-600 uppercase">Ecos:</span>
+                            <span class="text-amber-400 font-mono text-sm font-bold">{{ character.ecos || 0 }}</span>
+                        </div>
+                    </div>
+                    <div v-if="character.inventario && character.inventario.length > 0" class="space-y-1 max-h-40 overflow-y-auto">
+                        <div v-for="(item, idx) in character.inventario" :key="idx"
+                             class="text-[9px] sm:text-xs bg-black/20 border border-white/5 p-2 text-gray-300 hover:bg-white/5 transition-colors rounded">
+                            {{ item }}
+                        </div>
+                    </div>
+                    <div v-else class="text-[8px] sm:text-[9px] text-gray-600 italic font-playfair text-center py-4">
+                        Nenhum item
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLUNA DIREITA: EFEITOS -->
+            <div class="md:col-span-1 lg:col-span-4 flex flex-col gap-2 md:gap-5 lg:gap-6">
+                <!-- EFEITOS -->
+                <div class="glass-panel p-3 sm:p-4 md:p-5 flex-1 flex flex-col gap-3 md:gap-5">
+                    <!-- Tiros Especiais (Gunslinger) -->
+                    <div v-if="isGunslinger && character.tiros_especiais && character.tiros_especiais.length > 0">
+                        <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400 mb-2 md:mb-3 border-b border-white/10 pb-1.5">Tiros Especiais</h2>
+                        <div class="space-y-2">
+                            <div v-for="tiro in character.tiros_especiais" :key="tiro.nome"
+                                 @click="usarTiroEspecial(tiro)"
+                                 class="ornate-border bg-black/20 p-2 hover:bg-red-900/20 transition-colors cursor-pointer group">
+                                <div class="flex justify-between items-start mb-1">
+                                    <span class="text-[11px] sm:text-[10px] text-red-400 group-hover:text-red-300 uppercase tracking-wider font-cinzel">{{ tiro.nome }}</span>
+                                    <span class="text-[9px] bg-amber-900/40 border border-amber-700/50 text-amber-400 px-1.5 py-0.5 rounded">{{ tiro.custo }}</span>
+                                </div>
+                                <p class="text-[8px] sm:text-[9px] text-gray-500 leading-relaxed font-playfair italic">{{ tiro.efeito }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400 mb-2 md:mb-3 border-b border-white/10 pb-1.5">Resistência</h2>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="bg-black/20 p-1.5 sm:p-2 border border-white/5 flex flex-col items-center hover:bg-white/5 transition-colors">
+                                <span class="text-[9px] sm:text-[8px] md:text-[9px] text-gray-500 uppercase tracking-wide">Lento</span>
+                                <span class="text-sm sm:text-sm font-mono text-gray-200">{{ character.resist_slow_psn || 0 }}</span>
+                            </div>
+                            <div class="bg-black/20 p-1.5 sm:p-2 border border-white/5 flex flex-col items-center hover:bg-white/5 transition-colors">
+                                <span class="text-[7px] sm:text-[8px] md:text-[9px] text-gray-500 uppercase tracking-wide">Rápido</span>
+                                <span class="text-xs sm:text-sm font-mono text-gray-200">{{ character.resist_rapid_psn || 0 }}</span>
+                            </div>
+                            <div class="bg-black/20 p-1.5 sm:p-2 border border-white/5 flex flex-col items-center relative overflow-hidden group">
+                                <div class="absolute bottom-0 left-0 h-0.5 bg-red-900 w-full group-hover:h-1 transition-all"></div>
+                                <span class="text-[7px] sm:text-[8px] md:text-[9px] text-gray-500 uppercase tracking-wide">Frenesi</span>
+                                <span class="text-xs sm:text-sm font-mono text-gray-200">{{ character.resist_frenzy || 0 }}</span>
+                            </div>
+                            <div class="bg-black/20 p-1.5 sm:p-2 border border-white/5 flex flex-col items-center hover:bg-white/5 transition-colors">
+                                <span class="text-[7px] sm:text-[8px] md:text-[9px] text-gray-500 uppercase tracking-wide">Beast</span>
+                                <span class="text-xs sm:text-sm font-mono text-gray-200">{{ character.resist_beasthood || 0 }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="font-cinzel text-xs sm:text-xs md:text-xs tracking-wider sm:tracking-[0.2em] uppercase text-gray-400 mb-3 border-b border-white/10 pb-1.5">Efeitos</h2>
+                        
+                        <div class="space-y-2.5">
+                            <!-- Marca do Gunslinger (se existir e estiver liberada) -->
+                            <div v-if="isGunslinger && character.marca && character.marca.liberada">
+                                <div class="flex items-center gap-2 text-xs bg-red-900/20 border border-red-700/40 rounded-md p-2.5 hover:bg-red-900/30 transition-colors">
+                                    <span class="text-red-500 text-base flex-shrink-0">🩸</span>
+                                    <div class="min-w-0 flex-1">
+                                        <p class="text-red-400 uppercase tracking-wide font-cinzel text-[11px] font-semibold mb-0.5">{{ character.marca.nome }}</p>
+                                        <p class="text-gray-400 text-[10px] font-playfair italic leading-snug">{{ character.marca.efeito }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Habilidades Gunslinger (se existir) -->
+                            <div v-if="isGunslinger && character.habilidades && character.habilidades.length > 0" class="space-y-1.5">
+                                <div v-for="(hab, idx) in character.habilidades.slice(0, 3)" :key="idx"
+                                     class="text-[10px] sm:text-[11px] bg-amber-900/10 border border-amber-700/30 p-2 text-gray-300 rounded leading-relaxed">
+                                    {{ hab }}
+                                </div>
+                            </div>
+                            
+                            <!-- Efeitos de Status -->
+                            <div>
+                                <div v-if="character.status && character.status.length > 0" class="space-y-1.5">
+                                    <div v-for="(status, idx) in character.status" :key="idx"
+                                         class="flex items-center gap-2 text-xs bg-black/40 border border-red-700/30 rounded p-2 hover:bg-red-900/20 transition-colors cursor-help">
+                                        <span class="material-symbols-outlined text-red-600 text-base flex-shrink-0">emergency</span>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="text-gray-200 uppercase tracking-wide font-cinzel text-[11px] font-semibold">{{ status }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-else class="text-[11px] text-gray-600 italic font-playfair text-center py-4">Nenhum efeito ativo</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER DOSSIER -->
+        <div class="w-full glass-panel p-3 sm:p-4 md:p-5 mt-6">
+            <div class="max-w-7xl mx-auto space-y-4">
+                <div class="flex items-center gap-2 border-b border-white/10 pb-2">
+                    <span class="text-red-700 text-sm">⚔</span>
+                    <h3 class="font-cinzel text-gray-300 uppercase tracking-[0.25em] text-xs sm:text-sm">Dossier</h3>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="bg-black/40 border border-white/10 p-2 rounded">
+                        <span class="text-[10px] text-gray-500 uppercase tracking-widest font-cinzel block mb-1">Origem</span>
+                        <span class="text-gray-200 font-cinzel text-sm sm:text-base block truncate">{{ character.origin || character.raca || 'Desconhecida' }}</span>
+                    </div>
+                    <div class="bg-black/40 border border-white/10 p-2 rounded">
+                        <span class="text-[10px] text-gray-500 uppercase tracking-widest font-cinzel block mb-1">Antecedente</span>
+                        <span class="text-gray-200 font-cinzel text-sm sm:text-base block truncate">{{ character.antecedente || character.oath || 'Nenhum' }}</span>
+                    </div>
+                    <div class="bg-black/40 border border-white/10 p-2 rounded">
+                        <span class="text-[10px] text-red-700/70 uppercase tracking-widest font-cinzel block mb-1">Tendência</span>
+                        <span class="text-gray-200 font-cinzel text-sm sm:text-base block truncate">{{ character.tendencia || character.affliction || 'Neutro' }}</span>
+                    </div>
+                    <div class="bg-black/40 border border-amber-700/30 p-2 rounded">
+                        <span class="text-[10px] text-amber-600/80 uppercase tracking-widest font-cinzel block mb-1">Bônus Prof</span>
+                        <span class="text-amber-400 font-cinzel text-base sm:text-lg font-mono font-bold">+{{ character.bonus_proficiencia || 2 }}</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="bg-black/40 border border-white/10 p-3 rounded">
+                        <h4 class="text-[10px] text-gray-500 uppercase tracking-widest mb-2 font-cinzel">Proficiências</h4>
+                        <p class="text-[11px] sm:text-sm text-gray-300 leading-relaxed">
+                            {{ character.proficiencias || 'Armas simples, armaduras leves' }}
+                        </p>
+                    </div>
+                    <div class="bg-black/40 border border-white/10 p-3 rounded">
+                        <h4 class="text-[10px] text-gray-500 uppercase tracking-widest mb-2 font-cinzel">Idiomas</h4>
+                        <p class="text-[11px] sm:text-sm text-gray-300 leading-relaxed">
+                            {{ character.idiomas || 'Comum' }}
+                        </p>
+                    </div>
+                </div>
+
+                <div v-if="character.personalidade" class="bg-black/40 border border-white/10 p-3 rounded">
+                    <h4 class="text-[10px] text-gray-500 uppercase tracking-widest mb-2 font-cinzel">Personalidade</h4>
+                    <p class="text-[11px] sm:text-sm text-gray-300 leading-relaxed italic">
+                        {{ character.personalidade }}
+                    </p>
+                </div>
+
+                <div v-if="character.talentos && character.talentos.length > 0" class="bg-black/40 border border-amber-700/30 p-3 rounded">
+                    <h4 class="text-[10px] text-amber-500 uppercase tracking-widest mb-2 font-cinzel">⭐ Talentos</h4>
+                    <div class="flex flex-wrap gap-2">
+                        <span v-for="(talento, idx) in character.talentos" :key="idx"
+                              class="text-[10px] sm:text-xs bg-amber-900/20 border border-amber-700/40 text-amber-300 px-2.5 py-1 rounded uppercase tracking-wider">
+                            {{ talento }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        </div>
+
+        <!-- ESPAÇO EXTRA PARA SCROLL -->
+        <div class="h-36 sm:h-44 md:h-52"></div>
+
+        <!-- Combate -->
+        <InitiativeTracker v-if="combatState.ativo" :combat-state="combatState" :character-name="character.nome" :character-id="charId" />
+    </div>
+
+    <!-- Carregando -->
+    <div v-else class="fixed inset-0 min-h-screen flex items-center justify-center bg-black z-50">
+        <div class="text-center">
+            <div class="w-12 h-12 border-t-2 border-red-700 rounded-full animate-spin mx-auto mb-4"></div>
+            <p class="text-gray-400 font-serif italic">Entrando no Sonho...</p>
+        </div>
+    </div>
+</template>
+
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;600');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+
+html {
+  scroll-behavior: smooth;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --font-cinzel: 'Cinzel', serif;
+  --font-playfair: 'Playfair Display', serif;
+  --font-inter: 'Inter', sans-serif;
+}
+
+body {
+  background-image: radial-gradient(circle at center, #1a1a1a 0%, #050505 100%);
+  background-color: #0a0a0a;
+  color: #d3d3d3;
+  font-family: var(--font-inter);
+}
+
+.ornate-border {
+  border: 1px solid rgba(192, 192, 192, 0.2);
+  position: relative;
+}
+
+.ornate-border::before,
+.ornate-border::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border: 1px solid rgba(192, 192, 192, 0.5);
+  transition: all 0.3s ease;
+}
+
+.ornate-border::before {
+  top: -1px;
+  left: -1px;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.ornate-border::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: 0;
+  border-top: 0;
+}
+
+.ornate-border:hover::before,
+.ornate-border:hover::after {
+  width: 100%;
+  height: 100%;
+  border-color: rgba(139, 0, 0, 0.5);
+}
+
+.stat-bar-bg {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stat-bar-fill {
+  height: 100%;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel {
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+}
+
+.stat-glow {
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.6);
+  color: #fff;
+}
+
+.stat-dot::after {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  background-color: #c0c0c0;
+  border-radius: 50%;
+  margin-left: 4px;
+  box-shadow: 0 0 4px #c0c0c0;
+  vertical-align: middle;
+}
+
+.dossier-texture {
+  background-color: #1a1815;
+}
+
+.font-cinzel {
+  font-family: var(--font-cinzel) !important;
+}
+
+.font-playfair {
+  font-family: var(--font-playfair) !important;
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined' !important;
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  display: inline-block;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  word-wrap: normal;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+</style>

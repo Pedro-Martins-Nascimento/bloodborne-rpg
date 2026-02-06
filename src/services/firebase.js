@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, update, onValue, set } from "firebase/database";
+import { getDatabase, ref, update, onValue, set, remove } from "firebase/database";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_API_KEY,
@@ -34,6 +34,11 @@ export const subscribeToAllCharacters = (callback) => {
 // Atualizar dados
 export const updateCharacterData = (charId, data) => {
     return update(ref(db, `personagens/${charId}`), data);
+};
+
+// Remover personagem (modo clássico)
+export const removeCharacter = (charId) => {
+    return remove(ref(db, `personagens/${charId}`));
 };
 
 // Criar personagem novo
@@ -87,6 +92,11 @@ export const updateSessionCharacter = (sessionId, charId, data) => {
     return update(ref(db, `sessoes/${sessionId}/personagens/${charId}`), data);
 };
 
+// Remover personagem da sessão
+export const removeSessionCharacter = (sessionId, charId) => {
+    return remove(ref(db, `sessoes/${sessionId}/personagens/${charId}`));
+};
+
 // Criar personagem na sessão
 export const createSessionCharacter = (sessionId, charId, initialData) => {
     return set(ref(db, `sessoes/${sessionId}/personagens/${charId}`), initialData);
@@ -103,6 +113,11 @@ export const subscribeToSessionCombat = (sessionId, callback) => {
 // Atualizar estado do combate da sessão
 export const setSessionCombatState = (sessionId, newState) => {
     return set(ref(db, `sessoes/${sessionId}/combate`), newState);
+};
+
+// Remover sessão inteira
+export const removeSession = (sessionId) => {
+    return remove(ref(db, `sessoes/${sessionId}`));
 };
 
 // --- FUNÇÕES ANTIGAS (Para compatibilidade) ---

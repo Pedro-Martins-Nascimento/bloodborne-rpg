@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Game data files
+classes/
+fichas/
+marca_cacador/

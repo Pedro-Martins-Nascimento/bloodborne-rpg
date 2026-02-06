@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { getDatabase, ref as dbRef, onValue } from 'firebase/database';
+import { getDatabase, ref as dbRef, onValue, get } from 'firebase/database';
 import { getApp } from 'firebase/app';
 
 const router = useRouter();
@@ -9,9 +9,15 @@ const route = useRoute();
 const sessaoId = route.params.id;
 const playerId = route.params.playerId;
 const meuPersonagem = ref(null);
+const sessaoAtiva = ref(true);
+const sessaoEncerradaMensagem = ref('');
+const redirectCountdown = ref(5);
 const db = getDatabase(getApp());
 let unsubscribe = null;
+let unsubscribeSessao = null;
 let jaRedirecionou = false;
+let pollTimer = null;
+let redirectTimer = null;
 
 onMounted(() => {
     console.log('=== ApprovedLobby MONTOU ===');
@@ -30,6 +36,34 @@ onMounted(() => {
             console.log('Valor de esperando:', data?.esperando);
             meuPersonagem.value = data;
         });
+
+        // Poll a existência da sessão a cada 5s
+        const sessionRef = dbRef(db, `sessoes/${sessaoId}`);
+        const checkSession = async () => {
+            try {
+                const snap = await get(sessionRef);
+                if (!snap.exists()) {
+                    sessaoAtiva.value = false;
+                    sessaoEncerradaMensagem.value = 'Sessão encerrada pelo mestre.';
+                    if (!redirectTimer) {
+                        redirectCountdown.value = 5;
+                        redirectTimer = setInterval(() => {
+                            redirectCountdown.value -= 1;
+                            if (redirectCountdown.value <= 0) {
+                                clearInterval(redirectTimer);
+                                redirectTimer = null;
+                                router.push('/');
+                            }
+                        }, 1000);
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao checar sessão:', error);
+            }
+        };
+        checkSession();
+        pollTimer = setInterval(checkSession, 5000);
+
         console.log('Listener do Firebase registrado');
     } else {
         console.error('❌ SessionID ou PlayerID inválido!');
@@ -82,6 +116,15 @@ const stopWatch = watch(() => meuPersonagem.value?.esperando, async (esperando, 
 
 onBeforeUnmount(() => {
     if (unsubscribe) unsubscribe();
+    if (unsubscribeSessao) unsubscribeSessao();
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+    if (redirectTimer) {
+        clearInterval(redirectTimer);
+        redirectTimer = null;
+    }
 });
 
 const voltarParaLogin = () => {
@@ -110,6 +153,12 @@ const voltarParaLogin = () => {
 
             <!-- Card Principal -->
             <div class="glass-panel border-2 border-red-900/50 rounded-lg p-8 mb-6">
+                <!-- Sessão Encerrada -->
+                <div v-if="!sessaoAtiva" class="bg-red-900/30 border border-red-700 rounded p-4 mb-6 text-center">
+                    <p class="text-red-300 text-sm uppercase tracking-widest mb-2">⚠ Sessão encerrada</p>
+                    <p class="text-gray-300 text-sm">{{ sessaoEncerradaMensagem }}</p>
+                    <p class="text-gray-500 text-xs mt-2">Voltando ao início em {{ redirectCountdown }}s...</p>
+                </div>
                 <!-- Status Conectado -->
                 <div class="flex items-center justify-center mb-6">
                     <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
