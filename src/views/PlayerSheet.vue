@@ -41,6 +41,31 @@ const frenzySusceptibility = computed(() => {
 
 const isGunslinger = computed(() => character.value?.classe === 'Gunslinger');
 
+const armadurasEquipadas = computed(() => {
+    if (!character.value?.equipamentos) return [];
+    return character.value.equipamentos.filter((equip) => {
+        const tipo = (equip.tipo || '').toLowerCase();
+        return Boolean(equip.ca) || tipo.includes('armadura');
+    });
+});
+
+const armasEquipadas = computed(() => {
+    if (!character.value?.equipamentos) return [];
+    return character.value.equipamentos.filter((equip) => {
+        const tipo = (equip.tipo || '').toLowerCase();
+        return !equip.ca && !tipo.includes('armadura');
+    });
+});
+
+const armaduraExibida = computed(() => {
+    if (!character.value) return 'Nenhuma';
+    if (character.value.armadura) return character.value.armadura;
+    if (armadurasEquipadas.value.length > 0) {
+        return armadurasEquipadas.value.map((equip) => equip.nome).join(', ');
+    }
+    return 'Nenhuma';
+});
+
 const classDefaults = {
     Gunslinger: {
         origin: 'Humano (Variante)',
@@ -123,6 +148,19 @@ const backgroundFeatureExibida = computed(() => {
     if (!character.value) return null;
     return character.value.background_feature ?? classDefaults[character.value.classe]?.background_feature ?? null;
 });
+
+// Descrições dos Antecedentes
+const antecedentes = {
+    'Forasteiro': 'Um caçador de fora de Yharnam. Você chegou atraído pelos boatos de sangue e bestas. Pertencem a culturas diferentes e buscam sua própria verdade aqui. Peculiar em costumes, perspectiva de fora é sua força.',
+    'Servo da Igreja': 'Devotado aos ensinamentos da Igreja da Cura, você conhece seus rituais e mistérios. Acesso a áreas restritas e confiança de seu povo. Mas também carrega o peso de seus dogmas.',
+    'Sobrevivente da Praga': 'Você viu a transformação causar estragos em sua família e comunidade. Imunidade natural ou pura sorte... sobreviveu onde outros não. Conhecimento das infecções, trauma emocional profundo.',
+    'Veterano da Caçada': 'Você caçava bestas bem antes da epidemia virar pesadelo. Experiência em combate, sobrevivência em Yharnam e conexões com outros caçadores antigos. Um guerreiro testado.',
+    'Aprendiz da Oficina': 'Treinado na arte de forjar e modificar armas, você compreende mecanismos e explosivos. Pode reparar equipamento durante descansos. Ligação com a Oficina Workshop.'
+};
+
+const getAntecedentDescricao = (antecedente) => {
+    return antecedentes[antecedente] || 'Descrição não disponível para este antecedente.';
+};
 
 onMounted(() => {
     // Garantir que userId está atualizado
@@ -518,8 +556,8 @@ const switchTab = (tab) => {
                     <div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-red-900 to-transparent"></div>
                     <h3 class="font-cinzel text-gray-500 border-b border-gray-800 pb-2 mb-3 text-sm">ATAQUES</h3>
                     
-                    <div v-if="character.equipamentos && character.equipamentos.length > 0" class="space-y-3">
-                        <div v-for="(equip, idx) in character.equipamentos" :key="idx"
+                    <div v-if="armasEquipadas.length > 0" class="space-y-3">
+                        <div v-for="(equip, idx) in armasEquipadas" :key="idx"
                              class="flex justify-between items-center">
                             <div>
                                 <div class="font-bold text-white">{{ equip.nome }}</div>
@@ -550,7 +588,7 @@ const switchTab = (tab) => {
                     <ul class="space-y-2">
                         <li class="flex justify-between items-center border-b border-gray-900 pb-2">
                             <span>Armadura</span>
-                            <span class="text-sm text-gray-600">{{ character.armadura || 'Nenhuma' }}</span>
+                            <span class="text-sm text-gray-600">{{ armaduraExibida }}</span>
                         </li>
                         <li class="flex justify-between items-center border-b border-gray-900 pb-2">
                             <span>Frasco de Sangue (Poção)</span>
@@ -580,19 +618,8 @@ const switchTab = (tab) => {
                         
                         <!-- Antecedente -->
                         <div v-if="character.antecedente" class="bg-black/40 p-3 rounded border-l-4 border-purple-700">
-                            <h4 class="font-cinzel text-purple-400 text-xs mb-2 uppercase">Antecedente</h4>
-                            <p class="text-xs text-gray-300">{{ character.antecedente }}</p>
-                        </div>
-                        
-                        <!-- Perícias Principais -->
-                        <div v-if="character.pericias" class="bg-black/40 p-3 rounded border-l-4 border-green-700">
-                            <h4 class="font-cinzel text-green-400 text-xs mb-2 uppercase">Perícias Principais</h4>
-                            <div class="flex flex-wrap gap-2">
-                                <span v-for="(valor, nome) in character.pericias" :key="nome" v-if="valor >= 5"
-                                      class="text-[10px] bg-green-900/30 border border-green-700/50 text-green-300 px-2 py-1 rounded uppercase">
-                                    {{ nome }}: +{{ valor }}
-                                </span>
-                            </div>
+                            <h4 class="font-cinzel text-purple-400 text-xs mb-2 uppercase">{{ character.antecedente }}</h4>
+                            <p class="text-xs text-gray-300 leading-relaxed">{{ getAntecedentDescricao(character.antecedente) }}</p>
                         </div>
                     </div>
                 </div>

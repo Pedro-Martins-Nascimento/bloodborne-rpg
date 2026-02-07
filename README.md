@@ -69,6 +69,91 @@ Um aplicativo web moderno e responsivo construído para auxiliar mestres e jogad
 
 Veja [MASTER_DASHBOARD_IMPROVEMENTS.md](./MASTER_DASHBOARD_IMPROVEMENTS.md) para detalhes completos.
 
+### 🎲 Sistema de Combate Detalhado
+
+O sistema de combate é baseado em rodadas com iniciativa e ações organizadas em turnos. Aqui está como funciona:
+
+#### **Iniciativa & Ordem de Turnos**
+- **Cálculo:** Rolagem de `1d20 + modificador de Destreza`
+- **Função:** Determina a ordem de ação dos combatentes
+- **UI:** Tracker de iniciativa sincronizado em tempo real mostra quem passa
+- **Mestre controla:** Inicia combate, define ordem, avança turnos
+
+#### **Recursos de Combate por Classe**
+
+**🔫 Gunslinger - Grit (Bravura)**
+- **Máximo:** Modificador de Sabedoria (geralmente 2-3 pontos)
+- **Quando Recupera:**
+  - Ao matar um inimigo +1 ponto
+  - Ao acertar um crítico (19-20) +1 ponto
+  - Ao completar descanso curto volta ao máximo
+- **O que Faz:** Gaste 1 Grit para...
+  - **Tiros de Truque:** Desarmação (CON) ou Queda Prone (FOR)
+  - **Vantagem em Tiro:** Próximo ataque à distância rola 2d20 (pega maior)
+  - **Olhar de Mercúrio:** Reação se inimigo errar atacar corpo, você tira (3 dano psíquico)
+- **Mecânica Única:** Se errar com Olhar de Mercúrio, sofre 3 dano psíquico (fardo)
+
+**🧪 Alchemist - Bombas Alquímicas**
+- **Ação:** Jogar bomba (ação, não ação bônus)
+- **Alcance:** 30 pés (9 metros)
+- **Dano:** `2d8 + INT modificador` de Fogo ou Ácido (escolhe antes de jogar)
+- **Área:** 5x5 pés (pequena explosão)
+- **Frequência:** Sem limite por rodada, mas limita por disponibilidade de bombas
+- **Salva:** Alvo dentro da área faz salvação de DEX para metade do dano
+- **Construir Bombas:** Descanso curto cria 3 bombas novas (materiais da Igreja)
+
+**🩸 Blood Cursed - Transformação & Frenesi**
+- **Transformação:** Ação de bônus, dura concentração (até 1 minuto)
+  - Ganhar +1d6 em dano de ataque corpo-a-corpo
+  - Auto-dano: 1d4 dano por rodada (inevitável)
+  - Bônus de força temporário +2
+  - Pode manter concentração em combate
+- **Frenesi (Medidor de Sangue):** 0-10 pontos
+  - **0-3:** Nenhum efeito
+  - **4-7:** Vantagem em ataques, desvantagem em testes mentais
+  - **8-10:** Sai do controle, ataca aliados também (role INT CD 15 pra evitar)
+- **Redução:** Descanso curto (CD 14) reduz 3 pontos | Descanso longo volta a 0
+
+**⚔️ Guerreiro Ressonante - Reação de Sentinela**
+- **Habilidade:** Reação (não custa ação, reage ao evento)
+  - Quando inimigo se move perto: ataque de oportunidade **reduz movimento pra 0**
+  - Quando aliado é atacado: reação pra contraatacar inimigo
+- **Frequência:** Uma reação por rodada (depois precisa descansar)
+- **Tática:** Bloqueia movimento inimigo, protege aliados
+
+**🔧 Gunbreaker - Armas Grandes & Mecanismo**
+- **Dano:** +1d6 com armas de duas mãos (além do d8/d10 normal)
+- **Reparação:** Descanso curto conserta armas quebradas (precisa ferramentas)
+- **Criação:** Pode fabricar munição especial durante descanso (10 balas por descanso)
+- **Ofício:** Vantagem em testes com mecanismos (explosivos, armadilhas)
+
+#### **Ações por Turno**
+- **Ação Principal:** Ataque, Magia, Habilidade (Bomba, Transformação, etc.)
+- **Ação Bônus:** Movimento extra, Interação simples
+- **Reação:** Resposta a evento (Olhar de Mercúrio, Sentinela, esquivar)
+- **Deslocamento:** Por turno (varia por classe, 9-30 pés)
+
+#### **Sangramentos & Efeitos Contínuos**
+- **Sangue Gasto:** Quando usa Cura Rápida, Impulso ou Resistência ao Horror
+  - Recupera todos no descanso longo (8 horas)
+  - Pode gastar máximo 3 por combate normalmente
+- **Status Aplicáveis:** Mestre aplica via Dashboard
+  - Envenenado: Desvantagem em ataques, 1d4 dano no fim do turno
+  - Fraturado: Movimento reduzido à metade, DEX reduzida
+  - Cegueira: Desvantagm em ataques a distância
+
+#### **Mestre - Como Controlar Combate**
+1. **Iniciar Combate** → Clica em "Iniciar Combate" no Dashboard
+2. **Definir Ordem** → Sistema calcula iniciativas automático
+3. **Avançar Rodada** → Clica "Próximo Turno" a cada ação importante
+4. **Aplicar Efeitos** → Mestre modifica HP, Status, Frenesi em tempo real
+5. **Terminar Combate** → Cenas finalizam quando inimigos são derrotados
+
+#### **Sincronização Realtime**
+- Qualquer mudança do mestre aparece **instantaneamente** na ficha do jogador
+- Jogador vê HP, Status, Efeitos atualizar em tempo real (sem refresh)
+- Combate fica justo e transparente para todos
+
 ### Design & Estética 🎨
 - **Soulslike Visual:** Fontes Cinzel (títulos), Playfair Display (descrições), Material Symbols (ícones)
 - **Glassmorphism:** Painéis com efeito de vidro e bordas ornamentadas
