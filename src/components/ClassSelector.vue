@@ -145,7 +145,7 @@ const classes = {
             { nome: 'Gunblade', dano: '1d8', tipo: 'Cortante/Balístico' }
         ],
         frascos: 6,
-        muniao: 8,
+        municao: 8,
         ecos: 50,
         sangue: 3,
         frenesi: 0,

@@ -1,9 +1,22 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { subscribeToAllCharacters, updateCharacterData, subscribeToSessionCharacters, updateSessionCharacter, removeSessionCharacter, removeCharacter, removeSession } from '../services/firebase';
-import { getDatabase, ref as dbRef, onDisconnect, update as fbUpdate, set } from 'firebase/database';
-import { getApp } from 'firebase/app';
+import { 
+    subscribeToAllCharacters, 
+    updateCharacterData, 
+    subscribeToSessionCharacters, 
+    updateSessionCharacter, 
+    removeSessionCharacter, 
+    removeCharacter, 
+    removeSession,
+    subscribeToCombat,
+    setCombatState,
+    subscribeToSessionCombat,
+    setSessionCombatState,
+    isOfflineMode
+} from '../services/firebase';
+import { getDatabase, ref as dbRef, onDisconnect, update as fbUpdate } from 'firebase/database';
+import { getApps } from 'firebase/app';
 import GunslingerCreator from '../components/GunslingerCreator.vue';
 
 const route = useRoute();
@@ -39,7 +52,44 @@ const statusTemporario = ref({
     carisma: 10
 });
 const jogadorEmEdicao = ref(null); // Jogador cujos atributos estão sendo editados
-const db = getDatabase(getApp());
+
+// Sistema de Combate e Iniciativa
+const combatState = ref({
+    ativo: false,
+    ordem: [],
+    turnoAtual: 0,
+    rodada: 1
+});
+const showAddMonsterModal = ref(false);
+const newMonster = ref({
+    nome: '',
+    hp_max: 20,
+    hp_atual: 20,
+    iniciativa: 10,
+    ca: 12,
+    tipo: 'monstro'
+});
+
+// Rolador de Dados
+const showDiceModal = ref(false);
+const diceHistory = ref([]);
+
+// Sistema de Toast (substitui alert())
+const toast = ref({ visivel: false, texto: '', tipo: 'info' }); // tipo: 'info' | 'sucesso' | 'erro'
+let toastTimer = null;
+const mostrarToast = (texto, tipo = 'info') => {
+    toast.value = { visivel: true, texto, tipo };
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.value.visivel = false; }, 3500);
+};
+
+let db = null;
+try {
+    const apps = getApps();
+    if (apps.length) db = getDatabase(apps[0]);
+} catch (e) {
+    console.warn('Firebase DB não disponível localmente');
+}
 let beforeUnloadHandler = null;
 let heartbeatTimer = null;
 
@@ -395,7 +445,7 @@ const finalizarAtribuicao = () => {
     showStatusEditor.value = false;
     playerToAssignClass.value = null;
     classeSelecionada.value = null;
-    alert(`✅ Classe ${classData.nome} atribuída com sucesso!`);
+    mostrarToast(`✅ Classe ${classData.nome} atribuída!`, 'sucesso');
 };
 
 // Abre editor de atributos para um jogador já com ficha
@@ -434,7 +484,7 @@ const salvarAtributosEditados = () => {
 
     showStatusEditor.value = false;
     jogadorEmEdicao.value = null;
-    alert('✅ Atributos atualizados com sucesso!');
+    mostrarToast('✅ Atributos atualizados!', 'sucesso');
 };
 
 // Função para EXPULSAR um jogador da sala
@@ -707,15 +757,13 @@ const resetarJogador = (id) => {
 
 // Função para atualizar HP
 const atualizarHP = (id, novoHP) => {
-    // Apenas mestre pode alterar
-    if (!sessionId && !route.path.includes('mestre')) return;
-    
-    // Atualiza localmente primeiro para feedback instantâneo
+    // BUGFIX: a verificação de rota estava bloqueando updates em modo sessão
+    // No MasterDashboard, o mestre SEMPRE pode alterar HP
     if (players.value[id]) {
         players.value[id].hp_atual = novoHP;
     }
     
-    // Depois atualiza no Firebase
+    // Depois atualiza no Firebase/Local
     if (sessionId) {
         updateSessionCharacter(sessionId, id, { hp_atual: novoHP });
     } else {
@@ -725,18 +773,12 @@ const atualizarHP = (id, novoHP) => {
 
 // Função para alterar Sangue
 const alterarSangue = (id, valor) => {
-    // Apenas mestre pode alterar
-    if (!sessionId && !route.path.includes('mestre')) return;
-    
     const player = players.value[id];
     if (!player) return;
     
     const novoSangue = Math.max(0, Math.min(6, (player.sangue || 3) + valor));
-    
-    // Atualiza localmente
     players.value[id].sangue = novoSangue;
     
-    // Depois atualiza no Firebase
     if (sessionId) {
         updateSessionCharacter(sessionId, id, { sangue: novoSangue });
     } else {
@@ -746,18 +788,12 @@ const alterarSangue = (id, valor) => {
 
 // Função para alterar Frenesi
 const alterarFrenesi = (id, valor) => {
-    // Apenas mestre pode alterar
-    if (!sessionId && !route.path.includes('mestre')) return;
-    
     const player = players.value[id];
     if (!player) return;
     
     const novoFrenesi = Math.max(0, Math.min(10, (player.frenesi || 0) + valor));
-    
-    // Atualiza localmente
     players.value[id].frenesi = novoFrenesi;
     
-    // Depois atualiza no Firebase
     if (sessionId) {
         updateSessionCharacter(sessionId, id, { frenesi: novoFrenesi });
     } else {
@@ -773,10 +809,7 @@ const corrigirFrascosTodos = () => {
     Object.keys(players.value).forEach(id => {
         const jogador = players.value[id];
         if (jogador && !jogador.esperando) {
-            // Atualiza localmente
             players.value[id].frascos = 3;
-            
-            // Atualiza no Firebase
             if (sessionId) {
                 updateSessionCharacter(sessionId, id, { frascos: 3 });
             } else {
@@ -785,10 +818,229 @@ const corrigirFrascosTodos = () => {
         }
     });
     
-    alert('✅ Frascos de Sangue corrigidos para 3 em todos os jogadores!');
+    mostrarToast('✅ Frascos de Sangue corrigidos para 3!', 'sucesso');
 };
 
-// Função para iniciar combate
+// Descanso Longo: recupera HP, frascos e recursos de todos os jogadores
+const descansoLongo = () => {
+    const confirmed = confirm('🌙 Descanso Longo para TODOS?\n\nHP → máximo, Frascos → 3, recursos de classe recuperados, Sangue → 3, Frenesi → 0.');
+    if (!confirmed) return;
+    
+    Object.keys(players.value).forEach(id => {
+        const jogador = players.value[id];
+        if (!jogador || jogador.esperando) return;
+        
+        const updates = {
+            hp_atual: jogador.hp_max || jogador.hp_atual,
+            frascos: 3,
+            sangue: 3,
+            frenesi: 0,
+        };
+        
+        // Recupera recursos por classe
+        if (jogador.classe === 'Gunslinger') updates.grit_atual = jogador.grit_max || 2;
+        if (jogador.classe === 'Gunslinger' || jogador.classe === 'Gunbreaker') updates.municao = 10;
+        if (jogador.classe === 'Alchemist') updates.bombas_restantes = 5;
+        if (jogador.classe === 'GuerreirRessonante') updates.ressonancia_atual = jogador.ressonancia_max || 8;
+        if (jogador.classe === 'Gunbreaker') updates.cartuchos_atual = jogador.cartuchos_max || 4;
+        
+        // Aplica localmente e salva
+        players.value[id] = { ...jogador, ...updates };
+        if (sessionId) {
+            updateSessionCharacter(sessionId, id, updates);
+        } else {
+            updateCharacterData(id, updates);
+        }
+    });
+    
+    mostrarToast('🌙 Descanso Longo concluído! Todos recuperados.', 'sucesso');
+};
+
+// --- SISTEMA DE COMBATE DO MESTRE ---
+
+const monsterPresets = [
+    { nome: 'Cão Raivoso', hp_max: 12, iniciativa: 14, ca: 13 },
+    { nome: 'Aldeão Enlouquecido', hp_max: 18, iniciativa: 9, ca: 11 },
+    { nome: 'Caçador Corrompido', hp_max: 35, iniciativa: 15, ca: 15 },
+    { nome: 'Vigia da Igreja', hp_max: 45, iniciativa: 8, ca: 16 },
+    { nome: 'Fera Clerical (Chefe)', hp_max: 120, iniciativa: 12, ca: 16 }
+];
+
+const aplicarPreset = (preset) => {
+    newMonster.value = {
+        nome: preset.nome,
+        hp_max: preset.hp_max,
+        hp_atual: preset.hp_max,
+        iniciativa: preset.iniciativa + Math.floor(Math.random() * 5),
+        ca: preset.ca,
+        tipo: 'monstro'
+    };
+};
+
+const salvarEstadoCombate = (novoEstado) => {
+    combatState.value = novoEstado;
+    if (sessionId) {
+        setSessionCombatState(sessionId, novoEstado);
+    } else {
+        setCombatState(novoEstado);
+    }
+};
+
+const iniciarCombate = () => {
+    const participantes = [];
+    
+    // Adiciona todos os jogadores conectados
+    Object.entries(players.value).forEach(([id, char]) => {
+        if (!char.esperando) {
+            const d20 = Math.floor(Math.random() * 20) + 1;
+            const initTotal = d20 + (char.iniciativa || 0);
+            participantes.push({
+                id: id,
+                nome: char.nome,
+                tipo: 'jogador',
+                iniciativa: initTotal,
+                d20Rolado: d20,
+                hp_atual: char.hp_atual,
+                hp_max: char.hp_max,
+                ca: char.ca || 10
+            });
+        }
+    });
+
+    if (participantes.length === 0) {
+        alert('⚠️ Nenhum jogador conectado para iniciar combate! Adicione monstros primeiro ou aguarde jogadores.');
+    }
+
+    participantes.sort((a, b) => b.iniciativa - a.iniciativa);
+
+    const novoCombate = {
+        ativo: true,
+        ordem: participantes,
+        turnoAtual: 0,
+        rodada: 1
+    };
+
+    salvarEstadoCombate(novoCombate);
+};
+
+const finalizarCombate = () => {
+    if (!confirm('Deseja realmente finalizar o combate? A ordem de turnos será resetada.')) return;
+    const finalizado = {
+        ativo: false,
+        ordem: [],
+        turnoAtual: 0,
+        rodada: 1
+    };
+    salvarEstadoCombate(finalizado);
+};
+
+const proximoTurno = () => {
+    if (!combatState.value.ativo || !combatState.value.ordem.length) return;
+    let proximo = combatState.value.turnoAtual + 1;
+    let novaRodada = combatState.value.rodada || 1;
+    if (proximo >= combatState.value.ordem.length) {
+        proximo = 0;
+        novaRodada += 1;
+    }
+    salvarEstadoCombate({
+        ...combatState.value,
+        turnoAtual: proximo,
+        rodada: novaRodada
+    });
+};
+
+const turnoAnterior = () => {
+    if (!combatState.value.ativo || !combatState.value.ordem.length) return;
+    let anterior = combatState.value.turnoAtual - 1;
+    let novaRodada = combatState.value.rodada || 1;
+    if (anterior < 0) {
+        anterior = combatState.value.ordem.length - 1;
+        novaRodada = Math.max(1, novaRodada - 1);
+    }
+    salvarEstadoCombate({
+        ...combatState.value,
+        turnoAtual: anterior,
+        rodada: novaRodada
+    });
+};
+
+const adicionarMonstroAoCombate = () => {
+    if (!newMonster.value.nome.trim()) {
+        alert('Digite o nome do monstro.');
+        return;
+    }
+    const monsterId = 'monstro_' + Date.now();
+    const monstro = {
+        id: monsterId,
+        nome: newMonster.value.nome.trim(),
+        tipo: 'monstro',
+        iniciativa: Number(newMonster.value.iniciativa) || 10,
+        hp_max: Number(newMonster.value.hp_max) || 20,
+        hp_atual: Number(newMonster.value.hp_atual) || Number(newMonster.value.hp_max) || 20,
+        ca: Number(newMonster.value.ca) || 12
+    };
+
+    const novaOrdem = [...(combatState.value.ordem || []), monstro];
+    novaOrdem.sort((a, b) => b.iniciativa - a.iniciativa);
+
+    salvarEstadoCombate({
+        ...combatState.value,
+        ativo: true,
+        ordem: novaOrdem,
+        rodada: combatState.value.rodada || 1,
+        turnoAtual: combatState.value.turnoAtual || 0
+    });
+
+    showAddMonsterModal.value = false;
+    newMonster.value = { nome: '', hp_max: 20, hp_atual: 20, iniciativa: 10, ca: 12, tipo: 'monstro' };
+};
+
+const removerParticipanteCombate = (index) => {
+    const novaOrdem = [...combatState.value.ordem];
+    novaOrdem.splice(index, 1);
+    let novoTurno = combatState.value.turnoAtual;
+    if (novoTurno >= novaOrdem.length) {
+        novoTurno = Math.max(0, novaOrdem.length - 1);
+    }
+    salvarEstadoCombate({
+        ...combatState.value,
+        ordem: novaOrdem,
+        turnoAtual: novoTurno
+    });
+};
+
+const alterarHpParticipante = (index, delta) => {
+    const novaOrdem = [...combatState.value.ordem];
+    const p = novaOrdem[index];
+    if (!p) return;
+    p.hp_atual = Math.max(0, Math.min(p.hp_max || 999, (p.hp_atual || 0) + delta));
+    
+    // Se for jogador, reflete no personagem no banco também
+    if (p.tipo === 'jogador' && players.value[p.id]) {
+        atualizarHP(p.id, p.hp_atual);
+    }
+
+    salvarEstadoCombate({
+        ...combatState.value,
+        ordem: novaOrdem
+    });
+};
+
+// Rolador de Dados Rápido do Mestre
+const rolarDado = (lados) => {
+    const resultado = Math.floor(Math.random() * lados) + 1;
+    diceHistory.value.unshift({
+        tipo: `d${lados}`,
+        resultado,
+        critico: lados === 20 && (resultado === 20 || resultado === 1),
+        hora: new Date().toLocaleTimeString().slice(0, 5)
+    });
+    if (diceHistory.value.length > 10) diceHistory.value.pop();
+};
+
+const limparHistoricoDados = () => {
+    diceHistory.value = [];
+};
 
 // Função para liberar marca de caçador
 const liberarMarca = (id, marcaId) => {
@@ -864,40 +1116,49 @@ onMounted(() => {
     }
     
     if (sessionId) {
-        const sessionRef = dbRef(db, `sessoes/${sessionId}`);
-        const now = new Date().toISOString();
+        if (db) {
+            try {
+                const sessionRef = dbRef(db, `sessoes/${sessionId}`);
+                const now = new Date().toISOString();
 
-        // Marca sessão ativa enquanto o mestre estiver online
-        fbUpdate(sessionRef, { ativa: true, ultima_atividade: now });
+                // Marca sessão ativa enquanto o mestre estiver online
+                fbUpdate(sessionRef, { ativa: true, ultima_atividade: now }).catch(() => {});
 
-        // Heartbeat para manter sessão viva
-        heartbeatTimer = setInterval(() => {
-            fbUpdate(sessionRef, { ativa: true, ultima_atividade: new Date().toISOString() });
-        }, 15000);
+                // Heartbeat para manter sessão viva
+                heartbeatTimer = setInterval(() => {
+                    fbUpdate(sessionRef, { ativa: true, ultima_atividade: new Date().toISOString() }).catch(() => {});
+                }, 15000);
 
-        // Fecha a sessão automaticamente se o mestre desconectar
-        const disconnectRef = onDisconnect(sessionRef);
-        disconnectRef.update({ ativa: false, encerrada_em: new Date().toISOString() });
+                // Fecha a sessão automaticamente se o mestre desconectar
+                const disconnectRef = onDisconnect(sessionRef);
+                disconnectRef.update({ ativa: false, encerrada_em: new Date().toISOString() }).catch(() => {});
 
-        beforeUnloadHandler = () => {
-            fbUpdate(sessionRef, { ativa: false, encerrada_em: new Date().toISOString() });
-        };
-        window.addEventListener('beforeunload', beforeUnloadHandler);
+                beforeUnloadHandler = () => {
+                    fbUpdate(sessionRef, { ativa: false, encerrada_em: new Date().toISOString() }).catch(() => {});
+                };
+                window.addEventListener('beforeunload', beforeUnloadHandler);
+            } catch (e) {
+                console.warn('Erro ao configurar listener do Firebase Realtime:', e);
+            }
+        }
 
-        // Modo Sessão
+        // Modo Sessão - Jogadores
         subscribeToSessionCharacters(sessionId, (data) => {
-            console.log('MasterDashboard - Jogadores da sessão atualizados:', data);
-            console.log('MasterDashboard - IDs dos jogadores:', data ? Object.keys(data) : 'nenhum');
             players.value = data || {};
+        });
+
+        // Modo Sessão - Combate
+        subscribeToSessionCombat(sessionId, (data) => {
+            combatState.value = data || { ativo: false, ordem: [], turnoAtual: 0, rodada: 1 };
         });
     } else {
         // Modo Clássico
-        console.log('MasterDashboard - Modo clássico (sem sessão)');
         subscribeToAllCharacters((data) => { 
-            console.log('MasterDashboard - Todos os personagens:', data);
-            players.value = data; 
+            players.value = data || {}; 
         });
-        subscribeToCombat((data) => { combatState.value = data; });
+        subscribeToCombat((data) => { 
+            combatState.value = data || { ativo: false, ordem: [], turnoAtual: 0, rodada: 1 }; 
+        });
     }
 });
 
@@ -910,24 +1171,25 @@ onBeforeUnmount(() => {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
     }
-    if (sessionId) {
-        const sessionRef = dbRef(db, `sessoes/${sessionId}`);
-        fbUpdate(sessionRef, { ativa: false, encerrada_em: new Date().toISOString() });
+    if (sessionId && db) {
+        try {
+            const sessionRef = dbRef(db, `sessoes/${sessionId}`);
+            fbUpdate(sessionRef, { ativa: false, encerrada_em: new Date().toISOString() }).catch(() => {});
+        } catch (e) {}
     }
 });
 
 // LÓGICA DE GERENCIAMENTO
-// (aplicarTemplate, resetarJogador estão acima)
 
 // Encerrar sessão manualmente
 const encerrarSessao = async () => {
     if (!sessionId) return;
 
-    const confirmed = confirm('⚠️ Encerrar a sessão agora?\n\nTodos serão desconectados.');
+    const confirmed = confirm('⚠️ Encerrar a sessão agora?\n\nTodos os jogadores conectados serão notificados.');
     if (!confirmed) return;
 
     try {
-        await setSessionCombatState(sessionId, { ativo: false, ordem: [], turnoAtual: 0 });
+        await setSessionCombatState(sessionId, { ativo: false, ordem: [], turnoAtual: 0, rodada: 1 });
         await removeSession(sessionId);
 
         if (heartbeatTimer) {
@@ -935,7 +1197,7 @@ const encerrarSessao = async () => {
             heartbeatTimer = null;
         }
 
-        alert('✅ Sessão encerrada e removida do banco.');
+        alert('✅ Sessão encerrada com sucesso.');
         router.push('/');
     } catch (error) {
         console.error('Erro ao encerrar sessão:', error);
@@ -1024,33 +1286,169 @@ const hpStatus = (char) => {
 </script>
 
 <template>
-<div class="min-h-screen bg-black text-gray-300 p-6" style="min-width: 1200px;">
-    <!-- HEADER -->
-    <div class="flex justify-between items-center mb-8 border-b border-red-900/50 pb-6">
-        <div>
-            <h1 class="text-4xl text-amber-100 font-cinzel tracking-widest">PAINEL DO MESTRE</h1>
-            <p v-if="sessionId" class="text-sm text-gray-500 mt-2 font-mono">Sessão: <span class="text-red-400">{{ sessionId }}</span></p>
+<div class="min-h-screen bg-black text-gray-300 p-4 sm:p-6 w-full max-w-7xl mx-auto">
+
+    <!-- TOAST DO MESTRE -->
+    <transition name="toast-fade">
+        <div v-if="toast.visivel"
+             class="fixed top-5 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-lg shadow-2xl border text-sm font-cinzel tracking-wider flex items-center gap-3 max-w-[90vw] pointer-events-none"
+             :class="toast.tipo === 'sucesso' ? 'bg-green-950/98 border-green-600 text-green-200' : toast.tipo === 'erro' ? 'bg-red-950/98 border-red-600 text-red-200' : 'bg-zinc-900/98 border-amber-700/60 text-white'">
+            <span class="text-lg flex-shrink-0">{{ toast.tipo === 'sucesso' ? '✅' : toast.tipo === 'erro' ? '❌' : 'ℹ️' }}</span>
+            <span class="leading-tight">{{ toast.texto }}</span>
         </div>
-        <div class="flex items-center gap-3">
+    </transition>
+    <!-- HEADER -->
+    <div class="flex flex-wrap justify-between items-center mb-6 border-b border-red-900/50 pb-4 gap-4">
+        <div>
+            <h1 class="text-3xl sm:text-4xl text-amber-100 font-cinzel tracking-widest drop-shadow-[0_0_20px_rgba(217,119,6,0.3)]">PAINEL DO MESTRE</h1>
+            <p v-if="sessionId" class="text-xs sm:text-sm text-gray-400 mt-1 font-mono">
+                Sessão Ativa: <span class="text-red-400 font-bold tracking-widest bg-red-950/40 px-2 py-0.5 rounded border border-red-900/60">{{ sessionId }}</span>
+            </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
             <button v-if="sessionId" @click="encerrarSessao"
-                    class="text-sm text-red-300 hover:text-red-100 transition-colors px-4 py-2 border border-red-900/50 rounded hover:border-red-700 bg-red-900/20">
-                <span class="material-symbols-outlined align-middle mr-1">power_settings_new</span>Encerrar Sessão
+                    class="text-xs sm:text-sm text-red-300 hover:text-red-100 transition-colors px-3 py-2 border border-red-900/60 rounded hover:border-red-700 bg-red-950/40 flex items-center gap-1 font-cinzel">
+                <span class="material-symbols-outlined text-base">power_settings_new</span>
+                <span>Encerrar Sessão</span>
+            </button>
+            <button @click="descansoLongo"
+                    class="text-xs sm:text-sm text-blue-300 hover:text-blue-100 transition-colors px-3 py-2 border border-blue-900/60 rounded hover:border-blue-700 bg-blue-950/40 flex items-center gap-1 font-cinzel"
+                    title="Descanso Longo: restaura HP, frascos e recursos de todos">
+                <span class="material-symbols-outlined text-base">bedtime</span>
+                <span>Descanso Longo</span>
             </button>
             <button @click="corrigirFrascosTodos"
-                    class="text-sm text-green-300 hover:text-green-100 transition-colors px-4 py-2 border border-green-900/50 rounded hover:border-green-700 bg-green-900/20"
-                    title="Corrigir frascos para 5 em todos os jogadores">
-                <span class="material-symbols-outlined align-middle mr-1">healing</span>Corrigir Frascos
+                    class="text-xs sm:text-sm text-green-300 hover:text-green-100 transition-colors px-3 py-2 border border-green-900/60 rounded hover:border-green-700 bg-green-950/40 flex items-center gap-1 font-cinzel"
+                    title="Definir frascos de todos os caçadores para 3">
+                <span class="material-symbols-outlined text-base">healing</span>
+                <span>Corrigir Frascos</span>
             </button>
-            <router-link to="/" class="text-sm text-gray-400 hover:text-amber-100 transition-colors px-4 py-2 border border-gray-700 rounded hover:border-amber-700">
-                <span class="material-symbols-outlined align-middle mr-1">exit_to_app</span>Sair
+            <button @click="showDiceModal = true"
+                    class="text-xs sm:text-sm text-amber-300 hover:text-amber-100 transition-colors px-3 py-2 border border-amber-900/60 rounded hover:border-amber-700 bg-amber-950/40 flex items-center gap-1 font-cinzel">
+                <span class="material-symbols-outlined text-base">casino</span>
+                <span>Rolar Dados</span>
+            </button>
+            <router-link to="/" class="text-xs sm:text-sm text-gray-400 hover:text-amber-100 transition-colors px-3 py-2 border border-gray-700 rounded hover:border-amber-700 flex items-center gap-1 font-cinzel">
+                <span class="material-symbols-outlined text-base">exit_to_app</span>
+                <span>Sair</span>
             </router-link>
         </div>
     </div>
 
-    <!-- LAYOUT PRINCIPAL (3 COLUNAS DESKTOP) -->
-    <div class="grid grid-cols-3 gap-6">
-        <!-- COLUNA CENTRAL: JOGADORES NA SALA -->
-        <div class="col-span-3">
+    <!-- PAINEL DE CONTROLE DE COMBATE DO MESTRE -->
+    <div class="glass-panel p-4 sm:p-5 rounded-lg border border-red-900/60 mb-6 shadow-xl relative overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <span class="text-3xl">⚔️</span>
+                <div>
+                    <h2 class="font-cinzel text-base sm:text-lg text-amber-200 tracking-wider">ORDEM DE COMBATE & INICIATIVA</h2>
+                    <p class="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
+                        Status: 
+                        <span v-if="combatState.ativo" class="text-green-400 font-bold font-mono flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                            EM ANDAMENTO • Rodada {{ combatState.rodada || 1 }}
+                        </span>
+                        <span v-else class="text-gray-500 font-mono">Inativo (Aguardando início)</span>
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <button v-if="!combatState.ativo" 
+                        @click="iniciarCombate"
+                        class="px-4 py-2 bg-gradient-to-r from-red-800 to-red-900 hover:from-red-700 hover:to-red-800 border border-red-600 text-amber-100 font-cinzel text-xs tracking-wider rounded transition-all uppercase flex items-center gap-1.5 shadow-[0_0_15px_rgba(220,38,38,0.4)]">
+                    <span class="material-symbols-outlined text-base">swords</span>
+                    Iniciar Combate
+                </button>
+
+                <button v-else 
+                        @click="finalizarCombate"
+                        class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-red-300 font-cinzel text-xs tracking-wider rounded transition-all uppercase flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-base">stop_circle</span>
+                    Encerrar Combate
+                </button>
+
+                <button @click="showAddMonsterModal = true"
+                        class="px-3 py-2 bg-purple-900/40 hover:bg-purple-900/60 border border-purple-700 text-purple-300 font-cinzel text-xs tracking-wider rounded transition-all uppercase flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-base">skull</span>
+                    + Monstro / NPC
+                </button>
+            </div>
+        </div>
+
+        <!-- LISTA DE TURNOS E PARTICIPANTES (QUANDO COMBATE ATIVO) -->
+        <div v-if="combatState.ativo && combatState.ordem.length > 0" class="mt-4 pt-4 border-t border-red-900/40">
+            <!-- Controles de Turno -->
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3 bg-black/60 p-2.5 rounded border border-gray-800">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-400 font-cinzel">Vez de agir:</span>
+                    <span class="text-amber-400 font-cinzel font-bold text-sm">
+                        {{ combatState.ordem[combatState.turnoAtual]?.nome || 'Nenhum' }}
+                    </span>
+                    <span class="text-[10px] px-2 py-0.5 rounded font-mono"
+                          :class="combatState.ordem[combatState.turnoAtual]?.tipo === 'jogador' ? 'bg-blue-900/60 text-blue-300 border border-blue-700' : 'bg-red-900/60 text-red-300 border border-red-700'">
+                        {{ combatState.ordem[combatState.turnoAtual]?.tipo === 'jogador' ? 'Caçador' : 'Inimigo' }}
+                    </span>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <button @click="turnoAnterior" 
+                            class="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-xs font-cinzel transition-colors">
+                        ← Anterior
+                    </button>
+                    <button @click="proximoTurno" 
+                            class="px-4 py-1.5 bg-gradient-to-r from-amber-700 to-amber-800 hover:from-amber-600 hover:to-amber-700 text-white rounded text-xs font-cinzel font-bold transition-all shadow-[0_0_12px_rgba(245,158,11,0.4)]">
+                        Próximo Turno →
+                    </button>
+                </div>
+            </div>
+
+            <!-- Fita de Participantes da Iniciativa -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                <div v-for="(p, idx) in combatState.ordem" :key="p.id || idx"
+                     class="p-2.5 rounded border transition-all text-xs relative"
+                     :class="idx === combatState.turnoAtual 
+                         ? 'bg-amber-950/40 border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.3)] ring-1 ring-amber-500' 
+                         : 'bg-black/50 border-gray-800 hover:border-gray-700'">
+                    
+                    <div class="flex items-start justify-between gap-1 mb-1.5">
+                        <div class="truncate">
+                            <span class="font-cinzel font-bold truncate block"
+                                  :class="idx === combatState.turnoAtual ? 'text-amber-300' : p.tipo === 'jogador' ? 'text-blue-300' : 'text-red-400'">
+                                {{ p.nome }}
+                            </span>
+                            <span class="text-[10px] text-gray-500 font-mono">Iniciativa: <strong class="text-amber-400">{{ p.iniciativa }}</strong></span>
+                        </div>
+                        <button @click="removerParticipanteCombate(idx)" 
+                                class="text-gray-500 hover:text-red-400 text-xs px-1" title="Remover do combate">
+                            ✕
+                        </button>
+                    </div>
+
+                    <!-- HP do participante com botões rápidos -->
+                    <div class="flex items-center justify-between gap-1 bg-black/60 p-1.5 rounded border border-gray-800">
+                        <span class="text-[10px] text-gray-400 font-mono">
+                            HP: <strong :class="p.hp_atual <= (p.hp_max * 0.25) ? 'text-red-500' : 'text-green-400'">{{ p.hp_atual }}</strong>/{{ p.hp_max }}
+                        </span>
+                        <div class="flex items-center gap-1 font-mono text-[10px]">
+                            <button @click="alterarHpParticipante(idx, -5)" class="px-1.5 py-0.5 bg-red-950 hover:bg-red-800 border border-red-700 rounded text-red-300">-5</button>
+                            <button @click="alterarHpParticipante(idx, -1)" class="px-1.5 py-0.5 bg-red-950 hover:bg-red-800 border border-red-700 rounded text-red-300">-1</button>
+                            <button @click="alterarHpParticipante(idx, 1)" class="px-1.5 py-0.5 bg-green-950 hover:bg-green-800 border border-green-700 rounded text-green-300">+1</button>
+                            <button @click="alterarHpParticipante(idx, 5)" class="px-1.5 py-0.5 bg-green-950 hover:bg-green-800 border border-green-700 rounded text-green-300">+5</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-else-if="combatState.ativo && combatState.ordem.length === 0" class="mt-4 pt-3 border-t border-red-900/30 text-center text-xs text-gray-500 italic">
+            Combate ativo, mas nenhum participante na lista. Adicione monstros ou caçadores para começar os turnos.
+        </div>
+    </div>
+
+    <!-- LAYOUT PRINCIPAL -->
+    <div class="space-y-6">
+        <div>
             <!-- AGUARDANDO FICHA -->
             <div v-if="jogadoresNaSala.length > 0" class="mb-8">
                 <h2 class="font-cinzel text-xl text-blue-400 tracking-wider mb-4 uppercase flex items-center gap-2">
@@ -1195,15 +1593,21 @@ const hpStatus = (char) => {
 
                         <!-- Controle HP (visível ao expandir ou sempre) -->
                         <div v-if="selectedPlayer === id" class="mb-3 pt-3 border-t border-gray-700 space-y-3">
-                            <!-- HP Slider -->
+                            <!-- HP Slider e Botões Rápidos -->
                             <div class="space-y-2">
                                 <div class="flex justify-between items-center text-xs text-gray-400 mb-1">
                                     <span>Ajustar HP</span>
-                                    <span class="text-amber-400">{{ char.hp_atual }}</span>
+                                    <span class="text-amber-400 font-mono">{{ char.hp_atual }} / {{ char.hp_max }} PV</span>
                                 </div>
-                                <input type="range" min="0" :max="char.hp_max" :value="char.hp_atual" 
-                                       @input="e => atualizarHP(id, parseInt(e.target.value))"
-                                       class="w-full h-2 bg-gray-800 rounded appearance-none cursor-pointer accent-red-700">
+                                <div class="flex items-center gap-1.5">
+                                    <button @click.stop="atualizarHP(id, Math.max(0, char.hp_atual - 5))" class="px-2 py-1 bg-red-950 hover:bg-red-800 border border-red-700 text-red-300 rounded font-mono text-xs transition-colors">-5</button>
+                                    <button @click.stop="atualizarHP(id, Math.max(0, char.hp_atual - 1))" class="px-2 py-1 bg-red-950 hover:bg-red-800 border border-red-700 text-red-300 rounded font-mono text-xs transition-colors">-1</button>
+                                    <input type="range" min="0" :max="char.hp_max" :value="char.hp_atual" 
+                                           @input="e => atualizarHP(id, parseInt(e.target.value))"
+                                           class="flex-1 h-2 bg-gray-800 rounded appearance-none cursor-pointer accent-red-700">
+                                    <button @click.stop="atualizarHP(id, Math.min(char.hp_max, char.hp_atual + 1))" class="px-2 py-1 bg-green-950 hover:bg-green-800 border border-green-700 text-green-300 rounded font-mono text-xs transition-colors">+1</button>
+                                    <button @click.stop="atualizarHP(id, Math.min(char.hp_max, char.hp_atual + 5))" class="px-2 py-1 bg-green-950 hover:bg-green-800 border border-green-700 text-green-300 rounded font-mono text-xs transition-colors">+5</button>
+                                </div>
                             </div>
 
                             <!-- Sangue Control -->
@@ -1599,12 +2003,113 @@ const hpStatus = (char) => {
         </div>
     </div>
 
-    <!-- Modal do Gunslinger Creator -->
-    <GunslingerCreator 
-        v-model="showGunslingerCreator"
-        :player-name="currentGunslingerPlayer ? (players[currentGunslingerPlayer]?.nome || 'Caçador') : 'Caçador'"
-        @create="criarGunslinger"
-    />
+    <!-- Modal Adicionar Monstro / NPC -->
+    <div v-if="showAddMonsterModal" class="fixed inset-0 bg-black/85 flex items-center justify-center z-50 p-4">
+        <div class="bg-[#151515] border-2 border-purple-800 rounded-lg p-6 max-w-lg w-full shadow-2xl animate-fadeIn">
+            <h2 class="font-cinzel text-purple-300 text-xl mb-4 text-center">ADICIONAR MONSTRO / NPC AO COMBATE</h2>
+
+            <!-- Presets Rápidos -->
+            <div class="mb-4">
+                <label class="block text-[11px] font-cinzel text-gray-400 mb-2 uppercase">Presets Rápidos de Yharnam:</label>
+                <div class="flex flex-wrap gap-1.5">
+                    <button v-for="preset in monsterPresets" :key="preset.nome"
+                            @click="aplicarPreset(preset)"
+                            class="px-2.5 py-1 bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/60 rounded text-[11px] text-purple-200 font-cinzel transition-all">
+                        {{ preset.nome }} (HP {{ preset.hp_max }})
+                    </button>
+                </div>
+            </div>
+
+            <!-- Formulário -->
+            <div class="space-y-3 mb-6">
+                <div>
+                    <label class="block text-xs font-cinzel text-gray-400 mb-1">Nome do Inimigo</label>
+                    <input v-model="newMonster.nome" 
+                           placeholder="Ex: Fera Sedenta de Sangue"
+                           class="w-full bg-black/60 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-purple-600">
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block text-xs font-cinzel text-gray-400 mb-1">HP Máx</label>
+                        <input v-model.number="newMonster.hp_max" type="number" 
+                               class="w-full bg-black/60 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-purple-600 font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-cinzel text-gray-400 mb-1">Iniciativa</label>
+                        <input v-model.number="newMonster.iniciativa" type="number" 
+                               class="w-full bg-black/60 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-purple-600 font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-cinzel text-gray-400 mb-1">CA</label>
+                        <input v-model.number="newMonster.ca" type="number" 
+                               class="w-full bg-black/60 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 outline-none focus:border-purple-600 font-mono">
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button @click="showAddMonsterModal = false"
+                        class="flex-1 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 rounded font-cinzel text-xs uppercase transition-colors">
+                    Cancelar
+                </button>
+                <button @click="adicionarMonstroAoCombate"
+                        class="flex-1 py-2.5 bg-purple-800 hover:bg-purple-700 text-white rounded font-cinzel text-xs uppercase font-bold transition-all shadow-[0_0_15px_rgba(168,85,247,0.4)]">
+                    + Inserir no Combate
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Rolador de Dados do Mestre -->
+    <div v-if="showDiceModal" class="fixed inset-0 bg-black/85 flex items-center justify-center z-50 p-4">
+        <div class="bg-[#151515] border-2 border-amber-700 rounded-lg p-6 max-w-md w-full shadow-2xl animate-fadeIn">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="font-cinzel text-amber-300 text-xl">ROLADOR DE DADOS DO MESTRE</h2>
+                <button @click="showDiceModal = false" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+
+            <!-- Botões de Dados -->
+            <div class="grid grid-cols-4 gap-2 mb-6">
+                <button v-for="d in [4, 6, 8, 10, 12, 20, 100]" :key="d"
+                        @click="rolarDado(d)"
+                        class="p-3 bg-gradient-to-b from-amber-950/60 to-black hover:from-amber-900/70 border border-amber-700/60 rounded text-center transition-all transform hover:scale-105 shadow-md">
+                    <p class="font-cinzel text-amber-400 font-bold text-sm">d{{ d }}</p>
+                </button>
+            </div>
+
+            <!-- Histórico de Rolagens -->
+            <div class="bg-black/60 p-3 rounded border border-gray-800 mb-4 max-h-48 overflow-y-auto">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-[11px] font-cinzel text-gray-400 uppercase">Histórico Recente:</span>
+                    <button v-if="diceHistory.length > 0" @click="limparHistoricoDados" class="text-[10px] text-gray-500 hover:text-red-400">Limpar</button>
+                </div>
+
+                <div v-if="diceHistory.length === 0" class="text-center text-xs text-gray-600 py-3 italic">
+                    Clique em um dado acima para rolar
+                </div>
+
+                <div v-else class="space-y-1.5">
+                    <div v-for="(roll, i) in diceHistory" :key="i"
+                         class="flex justify-between items-center px-2 py-1 rounded bg-zinc-950 border border-gray-800 text-xs">
+                        <span class="text-amber-400 font-cinzel font-bold">{{ roll.tipo }}</span>
+                        <span class="font-mono text-sm font-bold"
+                              :class="roll.critico ? (roll.resultado === 20 ? 'text-green-400 animate-pulse' : 'text-red-500') : 'text-white'">
+                            {{ roll.resultado }}
+                            <span v-if="roll.tipo === 'd20' && roll.resultado === 20" class="text-[9px] text-green-300 ml-1">★ CRÍTICO!</span>
+                            <span v-if="roll.tipo === 'd20' && roll.resultado === 1" class="text-[9px] text-red-400 ml-1">☠ FALHA!</span>
+                        </span>
+                        <span class="text-[10px] text-gray-500 font-mono">{{ roll.hora }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <button @click="showDiceModal = false"
+                    class="w-full py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 rounded font-cinzel text-xs uppercase transition-colors">
+                Fechar
+            </button>
+        </div>
+    </div>
 </div>
 </template>
 
@@ -1739,5 +2244,30 @@ button:hover::before {
 .stat-badge:hover {
     transform: scale(1.05);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Toast fade animation */
+.toast-fade-enter-active,
+.toast-fade-leave-active {
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.toast-fade-enter-from,
+.toast-fade-leave-to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px) scale(0.96);
+}
+.toast-fade-enter-to,
+.toast-fade-leave-from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+}
+
+/* Animate fadeIn para modais */
+.animate-fadeIn {
+    animation: fadeIn 0.25s ease-in;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 </style>
